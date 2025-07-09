@@ -116,7 +116,7 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: Optional[str] = None
 
     # --- Git 配置 ---
-    GIT_CLONE_DIR: str = "/tmp/repo_clones"
+    GIT_CLONE_DIR: str = "/repo_clones"
 
 
 # 全局配置实例

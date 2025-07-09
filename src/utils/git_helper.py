@@ -136,7 +136,7 @@ class GitHelper:
             owner, repo_name = GitHelper.extract_repo_info(url)
             repo_dir_name = f"{owner}_{repo_name}"
         except ValueError as e:
-            raise GitCloneError(f"解析仓库信息失败: {str(e)}")
+            raise GitCloneError(f"解析仓库链接信息失败: {str(e)}")
 
         # 确保仓库存储目录存在
         repos_base_dir = settings.GIT_CLONE_DIR
