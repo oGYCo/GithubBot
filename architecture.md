@@ -49,7 +49,9 @@ repoinsight_service/
 │   │
 │   ├── services/         # 【业务逻辑层】负责实现所有核心功能
 │   │   ├── __init__.py
+|   |   ├── embedding_manager.py # 【新】Embedding 模型管理器
 │   │   ├── ingestion_service.py # 【服务】数据注入服务
+|   |   ├── llm_manager.py       # 【新】LLM 管理器
 │   │   ├── query_service.py     # 【服务】问答查询服务
 │   │   └── vector_store.py      # 【服务】向量数据库客户端
 │   │
@@ -80,16 +82,41 @@ repoinsight_service/
   * **`src/main.py`**: **【应用入口】** 创建 FastAPI 应用实例，是整个 Web 服务的起点。它会加载 `src/api/v1/api.py` 中定义的路由，让所有 API 接口生效。
 
   * **`src/api/v1/endpoints/repositories.py`**: **【API网关】** 定义所有对外暴露的 HTTP 接口（如 `/analyze`, `/status`, `/query`）。它负责接收外部请求，使用 `schemas` 验证数据，然后将处理任务分发给相应的 `services` 或 `worker`。
+      - /analyze 端点：接收包含 embedding_config 的请求，并将其传递给后台任务。
+      - /query 端点：接收包含 generation_mode 和 llm_config 的请求，并将其传递给 query_service.
 
   * **`src/core/config.py`**: **【配置中心】** 安全地从 `.env` 文件中读取所有配置信息（API密钥、数据库地址、ChromaDB地址等），供应用全局使用。
 
   * **`src/db/models.py`**: **【数据结构蓝图 (关系型)】** 定义了 `AnalysisSession` 等数据表，描述了任务状态等信息如何存储在 PostgreSQL 或 SQLite 中。
 
-  * **`src/schemas/repository.py`**: **【数据结构蓝图 (API)】** 使用 Pydantic 定义了 API 请求和响应的格式，确保了接口通信的规范性和安全性。
+  * **`src/schemas/repository.py`**: 【架构核心变更】职责：定义 API 的数据结构，这是实现灵活配置的关键。构建内容:
+
+      - EmbeddingConfig 模型：包含 provider (e.g., "openai", "huggingface"), model_name, api_key (可选) 等字段。
+
+      - LLMConfig 模型：与 EmbeddingConfig 类似，定义 LLM 的配置。
+
+      - RepoAnalyzeRequest 模型：请求体中包含 repo_url 和一个 embedding_config 对象。
+
+      - QueryRequest 模型：请求体中包含 session_id, question, 一个**generation_mode**字段 (值为 "service" 或 "plugin")，以及一个可选的 llm_config 对象（当 generation_mode 为 "service" 时使用）。
+
+      - QueryResponse 模型：响应体中包含一个可选的 answer 字段和一个可选的 retrieved_context 字段。
+
+  * **`src/services/embedding_manager.py`**:
+      - 职责：Embedding 模型工厂。根据传入的 EmbeddingConfig，动态地实例化并返回一个 LangChain 的 Embedding 模型对象。
+      - 构建内容：一个 get_embedding_model(config: EmbeddingConfig) 函数，内部使用 if/elif 或字典映射来处理不同的 provider（如 "openai", "azure", "huggingface" 等），并加载相应的模型。
+
+  * **`src/services/llm_manager.py`**:
+      - 职责：LLM 工厂。与 embedding_manager 类似，根据传入的 LLMConfig，动态地实例化并返回一个 LangChain 的 LLM 或 ChatModel 对象。
+      
 
   * **`src/services/ingestion_service.py`**: **【数据处理流水线】** 负责从“克隆仓库”到“存入数据库”的完整数据注入流程。它编排 `utils` 和 `vector_store` 模块来完成这项复杂任务。
+      - 关系：它在执行时，会从任务参数中接收 EmbeddingConfig，然后调用 embedding_manager.get_embedding_model() 来获取正确的模型实例，用这个实例来进行向量化。
 
   * **`src/services/query_service.py`**: **【问答引擎】** 负责处理用户的提问。它实现了混合检索、重排序等高级 RAG 策略，并最终调用 LLM 生成答案。
+      - 接收到 QueryRequest 后，首先执行混合检索和重排序，得到最终的上下文 retrieved_context。
+      - 检查请求中的 generation_mode 字段：
+            - 如果为 "plugin"，则直接将 retrieved_context 放入 QueryResponse 并返回。工作到此结束
+            - 如果为 "service"，则继续下一步：调用 llm_manager.get_llm() 获取 LLM 实例，构建 Prompt，生成答案，然后将 answer 和 retrieved_context 一起放入 QueryResponse 并返回。
 
   * **`src/services/vector_store.py`**: **【向量数据库适配器】** 封装了所有与 ChromaDB 的直接交互，提供如“创建集合”、“添加文档”、“查询向量”等标准接口，使上层服务无需关心 ChromaDB 的具体实现细节。
 
@@ -130,13 +157,32 @@ repoinsight_service/
 langbot/plugins/repoinsight_plugin/
 ├── __init__.py           # 插件主文件，定义指令和消息处理
 ├── api_client.py         # 封装所有对 RepoInsight-Service 的 API 调用
+├── config.py             # 【新】插件侧的配置文件
 └── session_manager.py    # 管理微信用户 ID 和分析任务 session_id 的映射
 ```
 
 #### **各文件职责详解**
 
-  * **`__init__.py`**: **【插件入口】** 负责处理用户交互，定义 `!set_repo` 等指令，并调用 `api_client`。
+  * **`__init__.py`**: **【插件入口】** 负责处理用户交互，定义 `!set_repo` 等指令，并调用 `api_client`。插件主逻辑，现在需要根据配置决定如何行动。
+      - 处理 !set_repo:
+            - 从 config.py 读取默认的 EmbeddingConfig。
+            - 允许用户通过指令参数覆盖默认配置，例如 !set_repo <url> --model=openai/text-embedding-3-large。
+            - 调用 api_client.start_analysis()，将最终的 EmbeddingConfig 发送给后端。
+      - 处理普通消息 (提问):
+            - 从 config.py 读取默认的 GENERATION_MODE。
+            - 如果模式是 "service": 调用 api_client.post_question()，将 generation_mode 设为 "service"，并可能传递插件侧的 LLM 配置。然后直接将返回的 answer 显示给用户。
+            - 如果模式是 "plugin": 调用 api_client.post_question()，将 generation_mode 设为 "plugin"。API 只会返回 retrieved_context。插件随后将这些上下文和用户问题组合成一个 Prompt，调用 LangBot 框架自身提供的 LLM 接口来生成最终答案，再显示给用户
 
-  * **`api_client.py`**: **【通信桥梁】** 一个纯粹的 HTTP 客户端，使用 `httpx` 等库与 `RepoInsight-Service` 的 API 端点进行通信。
+  * **`api_client.py`**: **【通信桥梁】** 一个纯粹的 HTTP 客户端，使用 `httpx` 等库与 `RepoInsight-Service` 的 API 端点进行通信。需要更新其函数签名，以接受和发送包含 embedding_config, llm_config, generation_mode 等参数的复杂请求体。
 
   * **`session_manager.py`**: **【用户状态管理】** 在内存或 Redis 中维护 `wechat_user_id` 到 `session_id` 的映射，帮助插件保持用户的会话状态。
+
+  * **`config.py`**:
+      - 职责：提供插件侧的默认配置。
+      - 构建内容：定义插件默认使用的 Embedding 模型配置、默认的 LLM 配置（如果需要独立配置），以及最重要的——默认的 GENERATION_MODE (值为 "service" 或 "plugin")。
+
+
+### 改变
+
+Embedding 阶段：插件决定使用哪个模型进行向量化。
+Query 阶段：插件决定在哪里完成最后一步的“生成”工作——是在算力更强的后端服务上完成，还是利用 LangBot 平台自身可能已经优化过或更经济的 LLM 服务来完成。
