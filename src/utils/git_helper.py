@@ -119,15 +119,12 @@ class GitHelper:
         """
         克隆 Git 仓库到项目的固定目录
         如果仓库已存在，可选择是否强制更新
-
         Args:
             url: Git 仓库 URL
             timeout: 克隆超时时间（秒）
             force_update: 是否强制更新已存在的仓库
-
         Returns:
             str: 克隆到的本地目录路径
-
         Raises:
             GitCloneError: 克隆失败
         """
@@ -139,7 +136,7 @@ class GitHelper:
             owner, repo_name = GitHelper.extract_repo_info(url)
             repo_dir_name = f"{owner}_{repo_name}"
         except ValueError as e:
-            raise GitCloneError(f"解析仓库信息失败: {str(e)}")
+            raise GitCloneError(f"解析仓库链接信息失败: {str(e)}")
 
         # 确保仓库存储目录存在
         repos_base_dir = settings.GIT_CLONE_DIR
