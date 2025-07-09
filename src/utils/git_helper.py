@@ -119,15 +119,12 @@ class GitHelper:
         """
         克隆 Git 仓库到项目的固定目录
         如果仓库已存在，可选择是否强制更新
-
         Args:
             url: Git 仓库 URL
             timeout: 克隆超时时间（秒）
             force_update: 是否强制更新已存在的仓库
-
         Returns:
             str: 克隆到的本地目录路径
-
         Raises:
             GitCloneError: 克隆失败
         """
