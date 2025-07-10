@@ -4,14 +4,12 @@
 """
 
 import logging
-import os
 from pathlib import Path
 from typing import List, Optional, Any
 
 from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # .env 文件路径
 env_path = Path(".") / ".env"

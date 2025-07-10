@@ -8,7 +8,6 @@ import json
 import logging
 import fnmatch
 from typing import List, Dict, Any, Optional, Iterator, Tuple
-from pathlib import Path
 import chardet
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
@@ -279,6 +278,7 @@ class FileParser:
         Returns:
             RecursiveCharacterTextSplitter: 文本分割器
         """
+
         if language == Language.PYTHON:
             return PythonCodeSplitter(
                 chunk_size=settings.CHUNK_SIZE,
