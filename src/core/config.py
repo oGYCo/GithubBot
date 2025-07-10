@@ -5,21 +5,20 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import List, Optional
 
 from dotenv import load_dotenv
-from pydantic import AnyHttpUrl, field_validator, ValidationInfo
+from pydantic import field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env 文件路径
-env_path = Path(".") / ".env"
+env_path = Path(__file__).parent.parent.parent / ".env"
 if env_path.is_file():
     load_dotenv(dotenv_path=env_path)
 
 
 class Settings(BaseSettings):
     """应用配置模型"""
-    # model_config in V2 replaces the Config class in V1
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=".env",
@@ -28,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # --- 应用基本配置 ---
-    APP_NAME: str = "RepoInsight Service"
+    APP_NAME: str = "GithubBot"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
@@ -92,9 +91,9 @@ class Settings(BaseSettings):
         return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/0"
 
     # --- 向量数据库配置 (ChromaDB) ---
-    CHROMA_SERVER_URL: Optional[str] = None
     CHROMA_SERVER_HOST: str = "chromadb"
     CHROMA_SERVER_PORT: int = 8000
+    CHROMA_SERVER_URL: Optional[str] = None
 
     @field_validator("CHROMA_SERVER_URL", mode='before')
     def assemble_chroma_connection(cls, v: Optional[str], info: ValidationInfo) -> str:
