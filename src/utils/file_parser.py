@@ -13,12 +13,6 @@ import chardet
 from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
     Language,
-    PythonCodeSplitter,
-    JavaScriptCodeSplitter,
-    JavaCodeSplitter,
-    CppCodeSplitter,
-    GoCodeSplitter,
-    RustCodeSplitter
 )
 from langchain.schema import Document
 
