@@ -5,10 +5,8 @@ Git 仓库操作工具
 
 import os
 import shutil
-import tempfile
 import logging
 from typing import Optional, Tuple
-from contextlib import contextmanager
 from urllib.parse import urlparse
 import git
 from git.exc import GitCommandError, InvalidGitRepositoryError
