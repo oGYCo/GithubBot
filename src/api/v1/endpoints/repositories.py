@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from ....schemas.repository import *
 
 router = APIRouter(
     prefix="/repos",
@@ -7,8 +8,8 @@ router = APIRouter(
 )
 
 
-@router.get("/analyze")
-async def analyze():
+@router.post("/analyze")
+async def analyze(req: QueryRequest):
     """
     Receive requests containing embedding_config, then push to Redis queue a task
     to analyze the embeddings
@@ -23,10 +24,10 @@ async def status(session_id: int):
     """
     return {"message": "Hello World"}
 
-@router.get("/query")
-async def query():
+@router.post("/query", response_model=QueryResponse)
+async def query(req: QueryRequest):
     """
     Receive requests containing generation_mode and llm_config, then perform the
     query operation
     """
-    return {"message": "Hello World"}
+    return {"answer": "Hello World", "retrieved_context": "Hello World"}
