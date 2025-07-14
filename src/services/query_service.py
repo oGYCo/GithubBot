@@ -1,11 +1,12 @@
 """
 查询服务，回答用户的问题
 实现混合检索（向量检索 + BM25 关键词检索）和重排序
-然后更具检索到的文本快块生成相应的回答
+然后根据检索到的文本快块生成相应的回答
 """
 
 import time
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -32,7 +33,7 @@ class QueryService:
         self._bm25_cache = {}  # 缓存 BM25 索引
         self._documents_cache = {}  # 缓存文档内容
 
-    def query(self, request: QueryRequest) -> QueryResponse:
+    async def query(self, request: QueryRequest) -> QueryResponse:
         """
         处理查询请求
 
@@ -56,7 +57,7 @@ class QueryService:
 
             # 执行混合检索
             retrieval_start = time.time()
-            retrieved_chunks = self._hybrid_retrieval(
+            retrieved_chunks = await self._hybrid_retrieval_async(
                 session.session_id,
                 session.embedding_config,
                 request.question
@@ -74,7 +75,7 @@ class QueryService:
             if request.generation_mode == GenerationMode.SERVICE and request.llm_config:
                 # 服务端生成答案
                 generation_start = time.time()
-                answer = self._generate_answer(
+                answer = await self._generate_answer_async(
                     request.question,
                     retrieved_chunks,
                     request.llm_config
@@ -157,6 +158,69 @@ class QueryService:
 
         # 4. 取前 N 个结果
         return final_results[:settings.FINAL_CONTEXT_TOP_K]
+
+    async def _hybrid_retrieval_async(
+            self,
+            session_id: str,
+            embedding_config: Dict[str, Any],
+            question: str
+    ) -> List[RetrievedChunk]:
+        """
+        异步混合检索：向量检索 + BM25 关键词检索
+
+        Args:
+            session_id: 会话 ID
+            embedding_config: Embedding 配置
+            question: 用户问题
+
+        Returns:
+            List[RetrievedChunk]: 检索结果
+        """
+        # 使用 asyncio.gather 并行执行向量检索和 BM25 检索
+        vector_task = asyncio.create_task(
+            self._vector_search_async(session_id, embedding_config, question)
+        )
+        bm25_task = asyncio.create_task(
+            self._bm25_search_async(session_id, question)
+        )
+        
+        # 等待两个检索任务完成
+        vector_results, bm25_results = await asyncio.gather(vector_task, bm25_task)
+
+        # 3. RRF 融合（这个操作很快，可以保持同步）
+        final_results = self._reciprocal_rank_fusion(vector_results, bm25_results)
+
+        # 4. 取前 N 个结果
+        return final_results[:settings.FINAL_CONTEXT_TOP_K]
+
+    async def _vector_search_async(
+            self,
+            session_id: str,
+            embedding_config: Dict[str, Any],
+            question: str
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        异步向量检索
+        """
+        # 将同步的向量检索包装为异步执行
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._vector_search, session_id, embedding_config, question
+        )
+
+    async def _bm25_search_async(
+            self,
+            session_id: str,
+            question: str
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        异步BM25检索
+        """
+        # 将同步的BM25检索包装为异步执行
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._bm25_search, session_id, question
+        )
 
     def _vector_search(
             self,
@@ -419,6 +483,21 @@ class QueryService:
         except Exception as e:
             logger.error(f"生成答案失败: {str(e)}")
             return f"生成答案失败: {str(e)}"
+
+    async def _generate_answer_async(
+            self,
+            question: str,
+            retrieved_chunks: List[RetrievedChunk],
+            llm_config: LLMConfigSchema
+    ) -> str:
+        """
+        异步使用 LLM 生成答案
+        """
+        # 将同步的答案生成包装为异步执行
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._generate_answer, question, retrieved_chunks, llm_config
+        )
 
     def _build_context(self, retrieved_chunks: List[RetrievedChunk]) -> str:
         """
