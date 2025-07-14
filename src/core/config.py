@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     # --- Git 配置 ---
     GIT_CLONE_DIR: str = "/repo_clones"
 
+    #---混合检索返回的文件个数---
+    FINAL_CONTEXT_TOP_K=5
+
 
 # 全局配置实例
 settings = Settings()
