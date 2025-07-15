@@ -66,7 +66,7 @@ class QueryRequest(BaseModel):
     session_id: str
     question: str
     generation_mode: str
-    llm_config: LMMConfig | None = None
+    llm_config: LLMConfig | None = None
 
 class RetrievedChunk(BaseModel):
     """检索到的文档块"""
@@ -79,7 +79,11 @@ class RetrievedChunk(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str | None = None
-    retrieved_context: str | None = None
+    retrieved_context: List[RetrievedChunk] | None = None
+    generation_mode: str | None = None
+    generation_time: int | None = None
+    retrieval_time: int | None = None
+    total_time: int | None = None
 
 class SessionStatusResponse(BaseModel):
     """会话状态响应模型"""

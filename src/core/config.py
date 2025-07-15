@@ -3,6 +3,7 @@
 负责从环境变量加载和管理所有配置信息
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import List, Optional
@@ -46,7 +47,6 @@ class Settings(BaseSettings):
         # 如果是 JSON 数组格式
         if v.startswith("[") and v.endswith("]"):
             try:
-                import json
                 parsed = json.loads(v)
                 if isinstance(parsed, list):
                     return [str(url).strip() for url in parsed if url]
@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     # --- 消息队列配置 (Redis) ---
     REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
     REDIS_URL: Optional[str] = None
 
     @field_validator("REDIS_URL", mode='before')
@@ -88,7 +89,35 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return v
         values = info.data
-        return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/0"
+        return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/{values.get('REDIS_DB', 0)}"
+
+    # --- Celery 配置 ---
+    CELERY_BROKER_URL: Optional[str] = None
+    CELERY_RESULT_BACKEND: Optional[str] = None
+    CELERY_WORKER_PREFETCH_MULTIPLIER: int = 1
+    CELERY_RESULT_EXPIRES: int = 3600
+
+    @field_validator("CELERY_BROKER_URL", mode='before')
+    def set_celery_broker(cls, v: Optional[str], info: ValidationInfo) -> str:
+        if isinstance(v, str):
+            return v
+        # 使用 REDIS_URL 作为 Celery broker
+        values = info.data
+        redis_url = values.get('REDIS_URL')
+        if not redis_url:
+            return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/{values.get('REDIS_DB', 0)}"
+        return redis_url
+
+    @field_validator("CELERY_RESULT_BACKEND", mode='before')
+    def set_celery_backend(cls, v: Optional[str], info: ValidationInfo) -> str:
+        if isinstance(v, str):
+            return v
+        # 使用 REDIS_URL 作为 Celery result backend
+        values = info.data
+        redis_url = values.get('REDIS_URL')
+        if not redis_url:
+            return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/{values.get('REDIS_DB', 0)}"
+        return redis_url
 
     # --- 向量数据库配置 (ChromaDB) ---
     CHROMA_SERVER_HOST: str = "chromadb"
@@ -116,7 +145,7 @@ class Settings(BaseSettings):
     GIT_CLONE_DIR: str = "/repo_clones"
 
     #---混合检索返回的文件个数---
-    FINAL_CONTEXT_TOP_K=5
+    FINAL_CONTEXT_TOP_K: int = 5
 
 
 # 全局配置实例
