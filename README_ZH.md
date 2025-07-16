@@ -1,28 +1,22 @@
 <div align="center">
-  <svg width="450" height="100" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="modern-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" style="stop-color:#3382FF;stop-opacity:1" />
-        <stop offset="100%" style="stop-color:#8E44AD;stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle"
-          font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-          font-size="72" font-weight="bold" fill="url(#modern-gradient)">
-      GithubBot
-    </text>
-  </svg>
+  <pre style="line-height:1.2; font-family:'Courier New', monospace; text-align:center; display:inline-block; margin-top:20px; background:#0d1117;">
+<span style="color:#3382FF;">██████╗  ██╗████████╗██╗  ██╗██╗   ██╗██████╗ ██████╗  ██████╗ ████████╗</span>
+<span style="color:#3E87FF;">██╔════╝ ██║╚══██╔══╝██║  ██║██║   ██║██╔══██╗██╔══██╗██╔═══██╗╚══██╔══╝</span>
+<span style="color:#498DFF;">██║  ███╗██║   ██║   ███████║██║   ██║██████╔╝██████╔╝██║   ██║   ██║   </span>
+<span style="color:#5493FF;">██║   ██║██║   ██║   ██╔══██║██║   ██║██╔══██╗██╔══██╗██║   ██║   ██║   </span>
+<span style="color:#5F99FF;">██████╔╝ ██║   ██║   ██║  ██║╚██████╔╝██████╔╝██████╔╝╚██████╔╝   ██║   </span>
+<span style="color:#699FFF;">╚═════╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   </span>
+  </pre>
   <p><strong>一个开源的、基于 LLM 的 GitHub 仓库智能分析机器人</strong></p>
   <p>与您的代码库进行对话、获取深度洞见、自动化代码理解</p>
-
   <p>
-  <a href="https://github.com/oGYCo/GithubBot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/oGYCo/GithubBot" alt="License"></a>
-  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python" alt="Python Version"></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.116.1-blueviolet?logo=fastapi" alt="FastAPI"></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+    <a href="https://github.com/oGYCo/GithubBot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/oGYCo/GithubBot" alt="License"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python" alt="Python Version"></a>
+    <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.116.1-blueviolet?logo=fastapi" alt="FastAPI"></a>
+    <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/LangChain-0.3.26-green?logo=langchain" alt="LangChain"></a>
+    <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
 </p>
 </div>
-
 ---
 **请注意，目前项目仍在开发中，还无法正常使用**
 
@@ -41,37 +35,61 @@
 
 GithubBot 采用现代化的微服务架构，确保系统的可伸缩性和可维护性。核心流程分为 **“数据注入”** 和 **“查询应答”** 两个阶段。
 
-```mermaid
-graph TD
-    subgraph 数据注入流程
-        A[1. 用户通过 API 提交仓库 URL] --> B{2. API 服务};
-        B --> C[3. 创建 Celery 异步任务];
-        C --> D((4. Redis 消息队列));
-        D --> E[5. Celery Worker 接收任务];
-        E --> F[6. Git Helper 克隆仓库];
-        F --> G[7. File Parser 解析/分块];
-        G --> H[8. Embedding Manager 生成向量];
-        H --> I((9. ChromaDB 向量数据库));
-        H --> J((10. PostgreSQL 存储元数据));
-    end
-
-    subgraph 查询应答流程
-        K[1. 用户通过 API 提问] --> L{2. API 服务};
-        L --> M[3. Query Service 接收请求];
-        M --> N[4. 混合搜索];
-        N --> O((ChromaDB));
-        N --> P((BM25 Retriever));
-        O --> Q[5. 获取相关代码块];
-        P --> Q;
-        Q --> R[6. LLM Manager 整合上下文];
-        R --> S[7. 调用 LLM 生成答案];
-        S --> T[8. 返回答案给用户];
-    end
-
-    style I fill:#228B22,stroke:#333,stroke-width:2px
-    style J fill:#4682B4,stroke:#333,stroke-width:2px
-    style O fill:#228B22,stroke:#333,stroke-width:2px
-```
+<div align="center" style="font-family: sans-serif; background-color: #0d1117; padding: 16px; border-radius: 8px;">
+    <table style="width: 100%; border-collapse: collapse; background-color: #0d1117;">
+        <thead>
+            <tr>
+                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">📥 数据注入流程</th>
+                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">💬 查询应答流程</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="vertical-align: top; padding-right: 12px; border-right: 1px solid #30363d;">
+                    <!-- Ingestion Flow Table -->
+                    <table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提交仓库 URL</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务创建 <strong>Celery</strong> 异步任务</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 任务进入 <strong>Redis</strong> 消息队列</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> 执行 `ingestion_service`</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">处理步骤:</div>
+                            • Git Helper: 克隆仓库<br>
+                            • File Parser: 解析/分块<br>
+                            • Embedding Manager: 生成向量
+                        </div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 存入 <strong>ChromaDB</strong> (向量) & <strong>PostgreSQL</strong> (元数据)</div></td></tr>
+                    </table>
+                </td>
+                <td style="vertical-align: top; padding-left: 12px;">
+                    <!-- Query Flow Table -->
+                    <table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提问</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务调用 `query_service`</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">混合搜索:</div>
+                            • 从 <strong>ChromaDB</strong> 进行向量检索<br>
+                            • 从内存进行 <strong>BM25</strong> 关键词检索
+                        </div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 整合并重排检索结果</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> 构建 Prompt 并调用 LLM</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 通过 API 返回最终答案</div></td></tr>
+                    </table>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
 
 ## 🛠️ 技术栈
 
