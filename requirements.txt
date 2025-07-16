@@ -4,7 +4,6 @@ chardet==4.0.0
 chromadb==1.0.15
 fastapi==0.116.1
 GitPython==3.1.44
-GitPython==3.1.44
 langchain==0.3.26
 langchain_cohere==0.4.4
 langchain_core==0.3.69
