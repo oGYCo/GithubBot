@@ -58,15 +58,16 @@ class FileParser:
         '.scala': (FileType.CODE, Language.SCALA),
         '.clj': (FileType.CODE, None),
         '.sh': (FileType.CODE, None),
-        '.sql': (FileType.CODE, Language.SQL),
+        '.sql': (FileType.CODE, None),
         '.html': (FileType.CODE, Language.HTML),
-        '.css': (FileType.CODE, Language.CSS),
+        '.css': (FileType.CODE, None),
         '.vue': (FileType.CODE, Language.JS),
         
         # 文档文件
-        '.md': (FileType.DOCUMENT, None),
+        '.md': (FileType.DOCUMENT, Language.MARKDOWN),
         '.txt': (FileType.DOCUMENT, None),
-        '.rst': (FileType.DOCUMENT, None),
+        '.rst': (FileType.DOCUMENT, Language.RST),
+        '.tex': (FileType.DOCUMENT, Language.LATEX),
         '.adoc': (FileType.DOCUMENT, None),
         
         # 配置文件
@@ -195,7 +196,7 @@ class FileParser:
         # 检查特殊文件名（无扩展名）
         file_name_lower = file_name.lower()
         return any(
-            file_name_lower.startswith(name.lower().lstrip('.'))
+            file_name_lower == name.lower().lstrip('.')
             for name in self.allowed_extensions
             if not name.startswith('.')
         )
@@ -267,54 +268,47 @@ class FileParser:
         except Exception as e:
             logger.error(f"读取文件失败 {file_path}: {str(e)}")
             return None
-    
+
     def create_text_splitter(self, language: Optional[Language] = None) -> RecursiveCharacterTextSplitter:
         """
         创建文本分割器
-        
+
         Args:
             language: 编程语言
-            
+
         Returns:
             RecursiveCharacterTextSplitter: 文本分割器
         """
+        chunk_size = settings.CHUNK_SIZE
+        chunk_overlap = settings.CHUNK_OVERLAP
 
-        if language == Language.PYTHON:
-            return PythonCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        elif language in [Language.JS, Language.TS]:
-            return JavaScriptCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        elif language == Language.JAVA:
-            return JavaCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        elif language in [Language.CPP, Language.C]:
-            return CppCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        elif language == Language.GO:
-            return GoCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        elif language == Language.RUST:
-            return RustCodeSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP
-            )
-        else:
-            return RecursiveCharacterTextSplitter(
-                chunk_size=settings.CHUNK_SIZE,
-                chunk_overlap=settings.CHUNK_OVERLAP,
-                separators=["\n\n", "\n", " ", ""]
-            )
+        # 扩展支持的语言列表
+        supported_languages = [
+            Language.PYTHON, Language.JS, Language.TS, Language.JAVA,
+            Language.CPP, Language.C, Language.GO, Language.RUST,
+            Language.HTML, Language.MARKDOWN, Language.LATEX, Language.RST,
+            Language.PHP, Language.RUBY, Language.CSHARP, Language.SWIFT,
+            Language.KOTLIN, Language.SCALA
+        ]
+
+        # 如果语言受支持，则使用语言特定的分割器
+        if language and language in supported_languages:
+            try:
+                return RecursiveCharacterTextSplitter.from_language(
+                    language=language,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap
+                )
+            except ValueError:
+                # 如果 langchain 版本不支持某个语言，则回退
+                pass
+
+        # 否则，使用通用的分割器
+        return RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=["\n\n", "\n", " ", ""]
+        )
     
     def split_file_content(self, content: str, file_path: str, language: Optional[Language] = None) -> List[Document]:
         """
