@@ -38,57 +38,59 @@
 GithubBot uses a modern microservices architecture to ensure system scalability and maintainability. The core process is divided into two stages: **"Data Ingestion"** and **"Query Answering"**.
 
 <div align="center" style="font-family: sans-serif; background-color: #0d1117; padding: 16px; border-radius: 8px;">
-    <table style="width: 100%; border-collapse: collapse; background-color: #0d1117;">
-        <thead>
-            <tr>
-                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">📥 Data Ingestion Flow</th>
-                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">💬 Query Answering Flow</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td style="vertical-align: top; padding-right: 12px; border-right: 1px solid #30363d;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User submits repo URL via API</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service creates a <strong>Celery</strong> async task</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Task enters <strong>Redis</strong> message queue</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> executes `ingestion_service`</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
-                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Processing Steps:</div>
-                            • Git Helper: Clone repository<br>
-                            • File Parser: Parse & chunk files<br>
-                            • Embedding Manager: Generate vectors
-                        </div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Store in <strong>ChromaDB</strong> (vectors) & <strong>PostgreSQL</strong> (metadata)</div>
-                    </div>
-                </td>
-                <td style="vertical-align: top; padding-left: 12px;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User asks a question via API</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service calls `query_service`</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
-                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Hybrid Search:</div>
-                            • Vector search from <strong>ChromaDB</strong><br>
-                            • Keyword search with <strong>BM25</strong>
-                        </div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Fuse and rerank retrieved results</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> builds prompt & calls LLM</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Return final answer via API</div>
-                    </div>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+<table style="width: 100%; border-collapse: collapse; background-color: #0d1117;">
+<thead>
+<tr>
+<th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">📥 Data Ingestion Flow</th>
+<th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">💬 Query Answering Flow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="vertical-align: top; padding-right: 12px; border-right: 1px solid #30363d;">
+<!-- Ingestion Flow Table -->
+<table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User submits repo URL via API</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service creates a <strong>Celery</strong> async task</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Task enters <strong>Redis</strong> message queue</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> executes `ingestion_service`</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+<div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Processing Steps:</div>
+• Git Helper: Clone repository<br>
+• File Parser: Parse & chunk files<br>
+• Embedding Manager: Generate vectors
+</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Store in <strong>ChromaDB</strong> (vectors) & <strong>PostgreSQL</strong> (metadata)</div></td></tr>
+</table>
+</td>
+<td style="vertical-align: top; padding-left: 12px;">
+<!-- Query Flow Table -->
+<table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User asks a question via API</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service calls `query_service`</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+<div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Hybrid Search:</div>
+• Vector search from <strong>ChromaDB</strong><br>
+• Keyword search with <strong>BM25</strong>
+</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Fuse and rerank retrieved results</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> builds prompt & calls LLM</div></td></tr>
+<tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+<tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Return final answer via API</div></td></tr>
+</table>
+</td>
+</tr>
+</tbody>
+</table>
 </div>
 
 ## 🛠️ Tech Stack

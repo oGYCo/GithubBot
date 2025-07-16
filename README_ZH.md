@@ -46,43 +46,45 @@ GithubBot 采用现代化的微服务架构，确保系统的可伸缩性和可�
         <tbody>
             <tr>
                 <td style="vertical-align: top; padding-right: 12px; border-right: 1px solid #30363d;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提交仓库 URL</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务创建 <strong>Celery</strong> 异步任务</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 任务进入 <strong>Redis</strong> 消息队列</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> 执行 `ingestion_service`</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                    <!-- Ingestion Flow Table -->
+                    <table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提交仓库 URL</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务创建 <strong>Celery</strong> 异步任务</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 任务进入 <strong>Redis</strong> 消息队列</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> 执行 `ingestion_service`</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
                             <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">处理步骤:</div>
                             • Git Helper: 克隆仓库<br>
                             • File Parser: 解析/分块<br>
                             • Embedding Manager: 生成向量
-                        </div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 存入 <strong>ChromaDB</strong> (向量) & <strong>PostgreSQL</strong> (元数据)</div>
-                    </div>
+                        </div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 存入 <strong>ChromaDB</strong> (向量) & <strong>PostgreSQL</strong> (元数据)</div></td></tr>
+                    </table>
                 </td>
                 <td style="vertical-align: top; padding-left: 12px;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提问</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务调用 `query_service`</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                    <!-- Query Flow Table -->
+                    <table style="width: 100%; border-spacing: 0 8px; border-collapse: separate;">
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. 用户通过 API 提问</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API 服务调用 `query_service`</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
                             <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">混合搜索:</div>
                             • 从 <strong>ChromaDB</strong> 进行向量检索<br>
                             • 从内存进行 <strong>BM25</strong> 关键词检索
-                        </div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 整合并重排检索结果</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> 构建 Prompt 并调用 LLM</div>
-                        <div style="color: #8b949e;">↓</div>
-                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 通过 API 返回最终答案</div>
-                    </div>
+                        </div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. 整合并重排检索结果</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> 构建 Prompt 并调用 LLM</div></td></tr>
+                        <tr><td align="center" style="color: #8b949e; line-height: 1;">↓</td></tr>
+                        <tr><td align="center"><div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. 通过 API 返回最终答案</div></td></tr>
+                    </table>
                 </td>
             </tr>
         </tbody>
