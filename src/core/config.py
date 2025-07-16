@@ -148,10 +148,10 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
 
     # 默认允许处理的文件扩展名列表 (逗号分隔)
-    ALLOWED_FILE_EXTENSIONS: str = (  # <--- 在这里添加
+    ALLOWED_FILE_EXTENSIONS: str = (
         ".py,.js,.jsx,.ts,.tsx,.java,.cpp,.c,.h,.hpp,.cs,.php,.rb,.go,.rs,.swift,.kt,.scala,"
         ".md,.txt,.rst,.json,.yaml,.yml,.toml,.ini,.cfg,.sh,.sql,.html,.css,.vue,"
-        "dockerfile,makefile,readme,license,changelog,.gitignore"
+        "dockerfile,makefile,readme,license,changelog"
     )
 
     # 默认排除的目录列表 (逗号分隔)
@@ -167,6 +167,9 @@ class Settings(BaseSettings):
     #---混合检索返回的文件个数---
     FINAL_CONTEXT_TOP_K: int = 5
 
+    # --- 向量检索和 BM25 检索返回的文档数量 ---
+    VECTOR_SEARCH_TOP_K: int = 10
+    BM25_SEARCH_TOP_K: int = 10
 
 # 全局配置实例
 settings = Settings()

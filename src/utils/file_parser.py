@@ -195,7 +195,7 @@ class FileParser:
         # 检查特殊文件名（无扩展名）
         file_name_lower = file_name.lower()
         return any(
-            file_name_lower.startswith(name.lower().lstrip('.'))
+            file_name_lower == name.lower().lstrip('.')
             for name in self.allowed_extensions
             if not name.startswith('.')
         )
