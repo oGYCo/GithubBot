@@ -1,26 +1,22 @@
 <div align="center">
-  <svg width="450" height="100" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <linearGradient id="modern-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" style="stop-color:#3382FF;stop-opacity:1" />
-        <stop offset="100%" style="stop-color:#8E44AD;stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle"
-          font-family="Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-          font-size="72" font-weight="bold" fill="url(#modern-gradient)">
-      GithubBot
-    </text>
-  </svg>
+  <pre style="line-height:1.2; font-family:'Courier New', monospace; text-align:center; display:inline-block; margin-top:20px; background:#0d1117;">
+<span style="color:#3382FF;">██████╗  ██╗████████╗██╗  ██╗██╗   ██╗██████╗ ██████╗  ██████╗ ████████╗</span>
+<span style="color:#3E87FF;">██╔════╝ ██║╚══██╔══╝██║  ██║██║   ██║██╔══██╗██╔══██╗██╔═══██╗╚══██╔══╝</span>
+<span style="color:#498DFF;">██║  ███╗██║   ██║   ███████║██║   ██║██████╔╝██████╔╝██║   ██║   ██║   </span>
+<span style="color:#5493FF;">██║   ██║██║   ██║   ██╔══██║██║   ██║██╔══██╗██╔══██╗██║   ██║   ██║   </span>
+<span style="color:#5F99FF;">██████╔╝ ██║   ██║   ██║  ██║╚██████╔╝██████╔╝██████╔╝╚██████╔╝   ██║   </span>
+<span style="color:#699FFF;">╚═════╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝   </span>
+  </pre>
   <p><strong>An open-source, LLM-based intelligent analysis bot for GitHub repositories</strong></p>
   <p>Chat with your codebase, gain deep insights, and automate code understanding</p>
 
   <p>
-  <a href="https://github.com/oGYCo/GithubBot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/oGYCo/GithubBot" alt="License"></a>
-  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python" alt="Python Version"></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.116.1-blueviolet?logo=fastapi" alt="FastAPI"></a>
-  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
-</p>
+    <a href="https://github.com/oGYCo/GithubBot/blob/main/LICENSE"><img src="https://img.shields.io/github/license/oGYCo/GithubBot" alt="License"></a>
+    <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python" alt="Python Version"></a>
+    <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.116.1-blueviolet?logo=fastapi" alt="FastAPI"></a>
+    <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/LangChain-0.3.26-green?logo=langchain" alt="LangChain"></a>
+    <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+  </p>
 </div>
 
 ---
@@ -41,37 +37,59 @@
 
 GithubBot uses a modern microservices architecture to ensure system scalability and maintainability. The core process is divided into two stages: **"Data Ingestion"** and **"Query Answering"**.
 
-```mermaid
-graph TD
-    subgraph Data Ingestion Flow
-        A[1. User submits repo URL via API] --> B{2. API Service};
-        B --> C[3. Create Celery async task];
-        C --> D((4. Redis Message Queue));
-        D --> E[5. Celery Worker receives task];
-        E --> F[6. Git Helper clones repo];
-        F --> G[7. File Parser parses/chunks];
-        G --> H[8. Embedding Manager generates vectors];
-        H --> I((9. ChromaDB Vector Store));
-        H --> J((10. PostgreSQL for Metadata));
-    end
-
-    subgraph Query Answering Flow
-        K[1. User asks a question via API] --> L{2. API Service};
-        L --> M[3. Query Service handles request];
-        M --> N[4. Hybrid Search];
-        N --> O((ChromaDB));
-        N --> P((BM25 Retriever));
-        O --> Q[5. Retrieve relevant code chunks];
-        P --> Q;
-        Q --> R[6. LLM Manager builds context];
-        R --> S[7. Call LLM to generate answer];
-        S --> T[8. Return answer to user];
-    end
-
-    style I fill:#228B22,stroke:#333,stroke-width:2px
-    style J fill:#4682B4,stroke:#333,stroke-width:2px
-    style O fill:#228B22,stroke:#333,stroke-width:2px
-```
+<div align="center" style="font-family: sans-serif; background-color: #0d1117; padding: 16px; border-radius: 8px;">
+    <table style="width: 100%; border-collapse: collapse; background-color: #0d1117;">
+        <thead>
+            <tr>
+                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">📥 Data Ingestion Flow</th>
+                <th style="width: 50%; text-align: center; padding-bottom: 16px; font-size: 18px;">💬 Query Answering Flow</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="vertical-align: top; padding-right: 12px; border-right: 1px solid #30363d;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User submits repo URL via API</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service creates a <strong>Celery</strong> async task</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Task enters <strong>Redis</strong> message queue</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>Celery Worker</strong> executes `ingestion_service`</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Processing Steps:</div>
+                            • Git Helper: Clone repository<br>
+                            • File Parser: Parse & chunk files<br>
+                            • Embedding Manager: Generate vectors
+                        </div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Store in <strong>ChromaDB</strong> (vectors) & <strong>PostgreSQL</strong> (metadata)</div>
+                    </div>
+                </td>
+                <td style="vertical-align: top; padding-left: 12px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">1. User asks a question via API</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">2. API service calls `query_service`</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 2px solid #388bfd; border-radius: 6px; padding: 12px; width: 95%; text-align: left; background-color: #161b22;">
+                            <div style="text-align: center; font-weight: bold; margin-bottom: 8px;">Hybrid Search:</div>
+                            • Vector search from <strong>ChromaDB</strong><br>
+                            • Keyword search with <strong>BM25</strong>
+                        </div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">3. Fuse and rerank retrieved results</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">4. <strong>LLM Manager</strong> builds prompt & calls LLM</div>
+                        <div style="color: #8b949e;">↓</div>
+                        <div style="border: 1px solid #21262d; border-radius: 6px; padding: 8px 12px; width: 95%; text-align: center; background-color: #161b22;">5. Return final answer via API</div>
+                    </div>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
 
 ## 🛠️ Tech Stack
 
