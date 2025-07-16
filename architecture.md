@@ -35,11 +35,9 @@ repoinsight_service/
 │   │           └── repositories.py # 【端点】定义 /repositories/ 相关的所有 API 端点
 │   │
 │   ├── core/             # 【配置层】负责应用的核心配置和启动事件
-│   │   ├── __init__.py
 │   │   └── config.py     # 【配置】加载和管理所有配置
 │   │
 │   ├── db/               # 【数据层-关系型】负责与关系型数据库 (PostgreSQL/SQLite) 交互
-│   │   ├── __init__.py
 │   │   ├── models.py     # 【模型】定义数据库表结构 (SQLAlchemy ORM)
 │   │   └── session.py    # 【会话】创建和管理数据库会话
 │   │
