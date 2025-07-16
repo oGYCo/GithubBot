@@ -120,16 +120,13 @@ class Settings(BaseSettings):
         return redis_url
 
     # --- 向量数据库配置 (ChromaDB) ---
-    CHROMA_SERVER_HOST: str = "chromadb"
-    CHROMA_SERVER_PORT: int = 8000
-    CHROMA_SERVER_URL: Optional[str] = None
+    # 本地持久化路径。如果设置此项，将优先使用本地存储，并忽略下面的 HOST/PORT 配置。
+    # 例如: CHROMADB_PERSISTENT_PATH="./chroma_data"
+    CHROMADB_PERSISTENT_PATH: Optional[str] = None
 
-    @field_validator("CHROMA_SERVER_URL", mode='before')
-    def assemble_chroma_connection(cls, v: Optional[str], info: ValidationInfo) -> str:
-        if isinstance(v, str):
-            return v
-        values = info.data
-        return f"http://{values.get('CHROMA_SERVER_HOST')}:{values.get('CHROMA_SERVER_PORT')}"
+    # 远程 ChromaDB 服务器配置 (当 CHROMADB_PERSISTENT_PATH 未设置时使用)
+    CHROMADB_HOST: str = "chromadb"
+    CHROMADB_PORT: int = 8000
 
     # --- LLM 和 Embedding 模型 API Keys ---
     OPENAI_API_KEY: Optional[str] = None
@@ -143,6 +140,9 @@ class Settings(BaseSettings):
 
     # --- Git 配置 ---
     GIT_CLONE_DIR: str = "/repo_clones"
+
+    # --- 索引和嵌入配置（默认） ---
+    EMBEDDING_BATCH_SIZE: int = 32
 
     #---混合检索返回的文件个数---
     FINAL_CONTEXT_TOP_K: int = 5
