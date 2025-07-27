@@ -234,8 +234,15 @@ class LLMManager:
     @staticmethod
     def _create_qwen_llm(config: LLMConfig) -> ChatOpenAI:
         """创建 通义千问 LLM 实例（使用 OpenAI 兼容接口）"""
+        # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
+        api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
+        
+        if not api_key:
+            raise ValueError("通义千问模型需要 API Key，请在请求中提供 api_key 或在 .env 文件中设置 QWEN_API_KEY 或 DASHSCOPE_API_KEY")
+        
         params = {
             "model": config.model_name,
+            "api_key": api_key,
             "temperature": config.temperature,
             "max_retries": 3,
             "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -244,11 +251,6 @@ class LLMManager:
 
         if config.max_tokens:
             params["max_tokens"] = config.max_tokens
-            
-        # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
-        api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
-        if api_key:
-            params["api_key"] = api_key
 
         return ChatOpenAI(**params)
 
