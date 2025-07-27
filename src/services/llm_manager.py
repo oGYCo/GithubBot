@@ -91,6 +91,9 @@ class LLMManager:
             elif config.provider == "google" or config.provider == "gemini":
                 return LLMManager._create_google_llm(config)
 
+            elif config.provider == "qwen":
+                return LLMManager._create_qwen_llm(config)
+
             else:
                 raise ValueError(f"不支持的 LLM 提供商: {config.provider}")
 
@@ -227,6 +230,24 @@ class LLMManager:
 
         return ChatGoogleGenerativeAI(**params)
 
+    @staticmethod
+    def _create_qwen_llm(config: LLMConfig) -> ChatOpenAI:
+        """创建 通义千问 LLM 实例（使用 OpenAI 兼容接口）"""
+        params = {
+            "model": config.model_name,
+            "temperature": config.temperature,
+            "max_retries": 3,
+            "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            **config.extra_params
+        }
+
+        if config.max_tokens:
+            params["max_tokens"] = config.max_tokens
+        if config.api_key:
+            params["api_key"] = config.api_key
+
+        return ChatOpenAI(**params)
+
 
 def get_llm(
         provider: str,
@@ -290,6 +311,16 @@ COMMON_LLM_MODELS = {
         "gemini-1.5-flash": "gemini-1.5-flash",
         "gemini-2.5-pro": "gemini-2.5-pro",
         "gemini-2.5-flash": "gemini-2.5-flash",
+    },
+    "qwen": {
+        "qwen-turbo": "qwen-turbo",
+        "qwen-plus": "qwen-plus",
+        "qwen-max": "qwen-max",
+        "qwen-long": "qwen-long",
+        "qwen2.5-72b-instruct": "qwen2.5-72b-instruct",
+        "qwen2.5-32b-instruct": "qwen2.5-32b-instruct",
+        "qwen2.5-14b-instruct": "qwen2.5-14b-instruct",
+        "qwen2.5-7b-instruct": "qwen2.5-7b-instruct",
     }
 }
 

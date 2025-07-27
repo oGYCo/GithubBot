@@ -14,6 +14,7 @@ class EmbeddingProvider(str, Enum):
     HUGGINGFACE = "huggingface"
     OLLAMA = "ollama"
     GOOGLE = "google"
+    QWEN = "qwen"
 
 class LLMProvider(str, Enum):
     """LLM 模型提供商枚举"""
@@ -23,6 +24,7 @@ class LLMProvider(str, Enum):
     OLLAMA = "ollama"
     DEEPSEEK = "deepseek"
     GOOGLE = "google"
+    QWEN = "qwen"
 
 
 class GenerationMode(str, Enum):

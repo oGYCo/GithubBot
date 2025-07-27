@@ -122,3 +122,24 @@ docker-compose logs -f
 docker-compose logs -f api
 docker-compose logs -f worker
 ```
+curl -X POST "http://localhost:8000/api/v1/repos/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://github.com/oGYCo/GithubBot",
+    "embedding_config": {
+      "provider": "google",
+      "model_name": "models/text-embedding-004",
+      "api_key": "sk-8bac0158a9ee415ba246ccb2b120f733"
+    }
+  }'
+
+curl -X POST "http://localhost:8000/api/v1/repos/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repo_url": "https://github.com/oGYCo/GithubBot",
+    "embedding_config": {
+      "provider": "qwen",
+      "model_name": "text-embedding-v4",
+      "api_key": "sk-8bac0158a9ee415ba246ccb2b120f733"
+    }
+  }'

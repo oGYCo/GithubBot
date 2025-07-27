@@ -673,6 +673,7 @@ COMMON_EMBEDDING_MODELS = {
         "text-embedding-v1": "text-embedding-v1",
         "text-embedding-v2": "text-embedding-v2",
         "text-embedding-v3": "text-embedding-v3",
+        "text-embedding-v4": "text-embedding-v4",
     },
     "zhipu": {
         "embedding-2": "embedding-2",
@@ -765,9 +766,14 @@ def get_recommended_models() -> Dict[str, Dict[str, str]]:
     """
     return {
         "中文通用": {
+            "provider": "qwen",
+            "model": "text-embedding-v4",
+            "description": "阿里云通义千问最新向量化模型，支持100+语种和代码"
+        },
+        "中文本地": {
             "provider": "huggingface",
             "model": "bge-large-zh-v1.5",
-            "description": "适合中文文档的通用向量化模型"
+            "description": "适合中文文档的本地部署向量化模型"
         },
         "英文通用": {
             "provider": "openai",
