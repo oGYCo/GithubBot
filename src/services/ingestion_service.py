@@ -6,10 +6,13 @@
 import os
 import time
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
+from langchain.schema import Document
+from langchain_core.embeddings import Embeddings
+from datetime import datetime, timezone
 
 from ..core.config import settings
 from ..db.session import get_db_session
@@ -18,7 +21,6 @@ from ..utils.git_helper import GitHelper
 from ..utils.file_parser import FileParser
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
 from ..services.vector_store import vector_store
-from ..schemas.repository import EmbeddingConfig as EmbeddingConfigSchema
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ class IngestionService:
 
         try:
             # 更新任务状态为处理中
-            self._update_session_status(db, session_id, TaskStatus.PROCESSING, started_at=datetime.utcnow())
+            self._update_session_status(db, session_id, TaskStatus.PROCESSING, started_at=datetime.now(timezone.utc))
 
             # 创建 embedding 配置对象
             embedding_cfg = EmbeddingConfig(
@@ -61,7 +63,7 @@ class IngestionService:
                 api_base=embedding_config.get("api_base"),
                 api_version=embedding_config.get("api_version"),
                 deployment_name=embedding_config.get("deployment_name"),
-                **embedding_config.get("extra_params", {})
+                extra_params=embedding_config.get("extra_params", {})
             )
 
             # 加载 embedding 模型
@@ -82,18 +84,21 @@ class IngestionService:
             # 更新会话信息
             self._update_session_repo_info(db, session_id, repo_name, owner)
 
-            # 扫描和处理文件
-            total_files, total_chunks = self._process_repository_files(
-                db, session_id, repo_path, embedding_model
+            # 扫描和处理文件，获取所有待处理的文档
+            processed_files, total_chunks, all_documents = self._process_repository_files(
+                db, session_id, repo_path
             )
 
-            # 更新最终统计
-            self._update_session_stats(db, session_id, total_files, total_files, total_chunks, total_chunks)
+            # 向量化和存储文档
+            if all_documents:
+                self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model)
+            else:
+                logger.warning(f"仓库 {repo_url} 没有生成任何文档块，可能所有文件都被跳过或处理失败")
 
             # 标记任务完成
             self._update_session_status(
                 db, session_id, TaskStatus.SUCCESS,
-                completed_at=datetime.utcnow()
+                completed_at=datetime.now(timezone.utc)
             )
 
             logger.info(f"仓库 {repo_url} 处理完成，会话 ID: {session_id}")
@@ -107,21 +112,21 @@ class IngestionService:
             self._update_session_status(
                 db, session_id, TaskStatus.FAILED,
                 error_message=error_msg,
-                completed_at=datetime.utcnow()
+                completed_at=datetime.now(timezone.utc)
             )
 
             return False
 
         finally:
-            db.close()
+            if db:
+                db.close()
 
     def _process_repository_files(
             self,
             db: Session,
             session_id: str,
-            repo_path: str,
-            embedding_model
-    ) -> tuple[int, int]:
+            repo_path: str
+    ) -> Tuple[int, int, List[Document]]:
         """
         处理仓库中的所有文件
 
@@ -129,10 +134,9 @@ class IngestionService:
             db: 数据库会话
             session_id: 会话 ID
             repo_path: 仓库路径
-            embedding_model: Embedding 模型
 
         Returns:
-            tuple[int, int]: (总文件数, 总块数)
+            Tuple[int, int, List[Document]]: (处理的文件数, 总块数, 所有文档块)
         """
         total_files = 0
         total_chunks = 0
@@ -143,13 +147,18 @@ class IngestionService:
         all_file_metadata = []
 
         # 扫描仓库文件
-        for file_path, file_info in self.file_parser.scan_repository(repo_path):
-            total_files += 1
+        files_to_process = list(self.file_parser.scan_repository(repo_path))
+        total_files = len(files_to_process)
+        self._update_session_stats(db, session_id, total_files=total_files)  # 初始更新总文件数
 
+        for file_path, file_info in files_to_process:
+            # 使用统一的文件路径变量名
+            relative_file_path = file_info["file_path"]
+            
             # 创建文件元数据记录
             file_metadata = FileMetadata(
                 session_id=session_id,
-                file_path=file_info["file_path"],
+                file_path=relative_file_path,
                 file_type=file_info["file_type"],
                 file_extension=file_info.get("file_extension"),
                 file_size=file_info["file_size"],
@@ -162,7 +171,6 @@ class IngestionService:
                 if not content:
                     file_metadata.is_processed = "skipped"
                     file_metadata.error_message = "无法读取文件内容或文件为空"
-                    all_file_metadata.append(file_metadata)
                     continue
 
                 # 计算行数
@@ -179,11 +187,15 @@ class IngestionService:
                 # 分割文档
                 documents = self.file_parser.split_file_content(
                     content,
-                    file_info["file_path"],
-                    language=None  # TODO: 从 file_info 获取语言信息
+                    relative_file_path,
+                    language=None
                 )
 
                 if documents:
+                    # 为每个文档块添加全局索引
+                    for i, doc in enumerate(documents):
+                        doc.metadata['chunk_index'] = total_chunks + i
+
                     all_documents.extend(documents)
                     file_metadata.chunk_count = len(documents)
                     total_chunks += len(documents)
@@ -193,20 +205,22 @@ class IngestionService:
                     file_metadata.is_processed = "skipped"
                     file_metadata.error_message = "未生成文档块"
 
-                all_file_metadata.append(file_metadata)
-
-                # 定期更新进度
-                if total_files % 50 == 0:
-                    self._update_session_stats(
-                        db, session_id, total_files, processed_files, total_chunks, 0
-                    )
-                    logger.info(f"已扫描 {total_files} 个文件，处理 {processed_files} 个文件，生成 {total_chunks} 个块")
-
+            except (IOError, UnicodeDecodeError) as e:
+                logger.error(f"文件读取失败 {file_path}: {str(e)}")
+                file_metadata.is_processed = "failed"
+                file_metadata.error_message = f"文件读取错误: {str(e)}"
             except Exception as e:
                 logger.error(f"处理文件失败 {file_path}: {str(e)}")
                 file_metadata.is_processed = "failed"
                 file_metadata.error_message = str(e)
-                all_file_metadata.append(file_metadata)
+
+            all_file_metadata.append(file_metadata)
+
+            if len(all_file_metadata) % 50 == 0:
+                self._update_session_stats(
+                    db, session_id, processed_files=processed_files, total_chunks=total_chunks
+                )
+                logger.info(f"已扫描 {len(all_file_metadata)}/{total_files} 个文件，生成 {total_chunks} 个块")
 
         # 批量保存文件元数据
         try:
@@ -217,11 +231,13 @@ class IngestionService:
             logger.error(f"保存文件元数据失败: {str(e)}")
             db.rollback()
 
-        # 向量化和存储文档
-        if all_documents:
-            self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model)
+        # 更新最终的文件处理和分块统计
+        self._update_session_stats(
+            db, session_id, processed_files=processed_files, total_chunks=total_chunks
+        )
+        logger.info(f"文件扫描完成。总文件数: {total_files}, 已处理: {processed_files}, 总块数: {total_chunks}")
 
-        return total_files, total_chunks
+        return processed_files, total_chunks, all_documents
 
     @retry(
         stop=stop_after_attempt(3),
@@ -231,8 +247,8 @@ class IngestionService:
             self,
             db: Session,
             session_id: str,
-            documents: List,
-            embedding_model,
+            documents: List[Document],
+            embedding_model: Embeddings,
             batch_size: int = None
     ):
         """

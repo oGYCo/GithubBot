@@ -40,14 +40,24 @@ class TaskStatus(str, Enum):
     CANCELLED = "cancelled"
 
 class EmbeddingConfig(BaseModel):
-    provider: LLMProvider
+    provider: EmbeddingProvider
     model_name: str
     api_key: str | None = None
+    api_base: str | None = None
+    api_version: str | None = None
+    deployment_name: str | None = None
+    extra_params: Dict[str, Any] | None = None
 
 class LLMConfig(BaseModel):
     provider: LLMProvider
     model_name: str
     api_key: str | None = None
+    api_base: str | None = None
+    api_version: str | None = None
+    deployment_name: str | None = None
+    temperature: float = 0.7
+    max_tokens: int | None = None
+    extra_params: Dict[str, Any] | None = None
 
 class RepoAnalyzeRequest(BaseModel):
     repo_url: str
