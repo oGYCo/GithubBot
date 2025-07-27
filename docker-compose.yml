@@ -123,10 +123,13 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
     ports:
       - "5555:5555"
     depends_on:
       - redis
+      - chromadb
     networks:
       - github_bot_network
     restart: unless-stopped
