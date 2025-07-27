@@ -31,28 +31,6 @@ async def analyze(req: RepoAnalyzeRequest):
         session_id = str(uuid.uuid4())
         logger.info(f"🆔 [会话创建] 生成会话ID: {session_id}")
         
-        # 创建数据库会话记录
-        logger.info(f"💾 [数据库] 正在创建会话记录...")
-        db = get_db_session()
-        try:
-            analysis_session = AnalysisSession(
-                session_id=session_id,
-                repository_url=req.repo_url,
-                status=TaskStatus.PENDING,
-                embedding_config=req.embedding_config.model_dump(),
-                created_at=datetime.now(timezone.utc)
-            )
-            db.add(analysis_session)
-            db.commit()
-            logger.info(f"✅ [数据库] 会话记录创建成功: {session_id}")
-        except Exception as e:
-            logger.error(f"❌ [数据库错误] 创建会话记录失败: {str(e)}")
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Failed to create session")
-        finally:
-            if db:
-                db.close()
-        
         # 将任务推送到 Celery
         logger.info(f"📤 [任务队列] 正在推送任务到Celery队列...")
         task = process_repository_task.delay(
@@ -62,19 +40,31 @@ async def analyze(req: RepoAnalyzeRequest):
         )
         logger.info(f"✅ [任务队列] 任务推送成功 - 任务ID: {task.id}")
         
-        # 更新数据库记录，保存 task_id
+        # 创建数据库会话记录并保存 task_id（在同一个事务中）
+        logger.info(f"💾 [数据库] 正在创建会话记录并保存任务ID...")
         db = get_db_session()
         try:
-            analysis_session = db.query(AnalysisSession).filter(
-                AnalysisSession.session_id == session_id
-            ).first()
-            if analysis_session:
-                analysis_session.task_id = task.id
-                db.commit()
-                logger.info(f"💾 [数据库更新] 任务ID已保存到数据库: {task.id}")
+            analysis_session = AnalysisSession(
+                session_id=session_id,
+                repository_url=req.repo_url,
+                status=TaskStatus.PENDING,
+                embedding_config=req.embedding_config.model_dump(),
+                created_at=datetime.now(timezone.utc),
+                task_id=task.id  # 直接在创建时设置task_id
+            )
+            db.add(analysis_session)
+            db.commit()
+            logger.info(f"✅ [数据库] 会话记录创建成功，任务ID已保存: {session_id} -> {task.id}")
         except Exception as e:
-            logger.error(f"❌ [数据库错误] 保存任务ID失败: {str(e)}")
+            logger.error(f"❌ [数据库错误] 创建会话记录失败: {str(e)}")
             db.rollback()
+            # 如果数据库操作失败，取消已创建的Celery任务
+            try:
+                task.revoke(terminate=True)
+                logger.info(f"🛑 [任务取消] 由于数据库错误，已取消Celery任务: {task.id}")
+            except Exception as revoke_error:
+                logger.error(f"❌ [取消失败] 无法取消Celery任务: {revoke_error}")
+            raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
         finally:
             if db:
                 db.close()
