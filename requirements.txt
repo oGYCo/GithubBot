@@ -1,15 +1,20 @@
 # FastAPI 和 Web 服务
 fastapi==0.116.1
+uvicorn[standard]==0.35.0
 pydantic==2.11.7
 pydantic_settings==2.10.1
 python-dotenv==1.1.1
+python-multipart==0.0.20
 
 # 数据库
 SQLAlchemy==2.0.41
+alembic==1.16.4
+psycopg2-binary==2.9.10
 
 # Celery 和 Redis
 celery==5.5.3
-redis==6.2.0
+redis==6.0.1
+flower==2.0.1
 
 # 向量数据库
 chromadb==1.0.15
@@ -17,7 +22,9 @@ chromadb==1.0.15
 
 # LangChain 核心
 langchain==0.3.26
-langchain_core==0.3.69
+langchain-core==0.3.69
+langchain-community==0.3.27
+langchain-text-splitters==0.3.8
 
 # LangChain 模型集成
 langchain_openai==0.3.28
@@ -26,13 +33,20 @@ langchain_ollama==0.3.4
 langchain_google_genai==2.1.8
 langchain_cohere==0.4.4
 langchain_mistralai==0.2.11
-langchain_google_genai==2.1.8
 
 # 文本处理和搜索
-rank_bm25==0.2.2
+rank-bm25==0.2.2
+sentence-transformers==2.2.2
+tiktoken==0.5.2
 chardet==5.2.0
 
 # Git 操作
 GitPython==3.1.44
 
-flower
+# 文件处理
+aiofiles==24.1.0
+pathspec==0.12.1
+
+# HTTP 客户端
+requests==2.32.4
+httpx==0.28.1

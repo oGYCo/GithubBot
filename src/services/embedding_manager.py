@@ -11,8 +11,8 @@ import asyncio
 from typing import Dict, Any, Optional, List, Union
 from dataclasses import dataclass, field
 from langchain_openai import OpenAIEmbeddings, AzureOpenAIEmbeddings
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_ollama import OllamaEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.embeddings import Embeddings
 

@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from ..core.config import settings
 

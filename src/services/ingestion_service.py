@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from datetime import datetime, timezone
 
