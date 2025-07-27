@@ -17,7 +17,7 @@ from ..core.config import settings
 logger = logging.getLogger(__name__)
 
 
-class LangChainEmbeddingAdapter(EmbeddingFunction):
+class LangChainEmbeddingAdapter(EmbeddingFunction[Documents]):
     """LangChain Embeddings 到 ChromaDB EmbeddingFunction 的适配器"""
     
     def __init__(self, langchain_embedding: LangChainEmbeddings):
@@ -26,11 +26,32 @@ class LangChainEmbeddingAdapter(EmbeddingFunction):
     def __call__(self, input: Documents) -> Embeddings:
         """将文档转换为嵌入向量"""
         try:
+            logger.debug(f"🔧 [适配器调用] 输入类型: {type(input)}, 输入内容: {input[:2] if isinstance(input, list) and len(input) > 0 else input}")
+            
+            # 确保输入是字符串列表
+            if not isinstance(input, list):
+                logger.warning(f"🔧 [输入格式] 输入不是列表类型: {type(input)}, 转换为列表")
+                input = [str(input)]
+            
+            # 检查列表中的每个元素是否为字符串
+            cleaned_input = []
+            for i, item in enumerate(input):
+                if not isinstance(item, str):
+                    logger.warning(f"🔧 [元素格式] 第 {i} 个元素不是字符串: {type(item)}, 转换为字符串")
+                    item = str(item) if item is not None else ""
+                cleaned_input.append(item)
+            
+            logger.debug(f"🔧 [适配器处理] 清理后的输入长度: {len(cleaned_input)}")
+            
             # 使用 LangChain 的 embed_documents 方法
-            embeddings = self.langchain_embedding.embed_documents(input)
+            embeddings = self.langchain_embedding.embed_documents(cleaned_input)
+            
+            logger.debug(f"🔧 [适配器结果] 生成嵌入向量数量: {len(embeddings) if embeddings else 0}")
             return embeddings
+            
         except Exception as e:
-            logger.error(f"嵌入向量生成失败: {str(e)}")
+            logger.error(f"❌ [适配器失败] 嵌入向量生成失败: {str(e)}")
+            logger.error(f"🔍 [错误详情] 输入类型: {type(input)}, 输入长度: {len(input) if hasattr(input, '__len__') else 'N/A'}")
             raise
 
 

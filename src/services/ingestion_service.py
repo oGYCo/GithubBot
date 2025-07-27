@@ -333,10 +333,26 @@ class IngestionService:
             try:
                 logger.info(f"⚡ [批次处理] 会话ID: {session_id} - 处理第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
                 
+                # 检查和清理文本内容
+                cleaned_texts = []
+                for idx, text in enumerate(batch_texts):
+                    if not isinstance(text, str):
+                        logger.warning(f"🔧 [文本格式] 会话ID: {session_id} - 文档 {i+idx} 的内容不是字符串类型: {type(text)}")
+                        text = str(text) if text is not None else ""
+                    
+                    # 确保文本不为空且是有效字符串
+                    if not text or not text.strip():
+                        logger.warning(f"🔧 [空文本] 会话ID: {session_id} - 文档 {i+idx} 内容为空，跳过")
+                        text = "[空文档]"
+                    
+                    cleaned_texts.append(text.strip())
+                
+                logger.debug(f"🔧 [文本检查] 会话ID: {session_id} - 批次文本样例: {cleaned_texts[0][:100] if cleaned_texts else '无内容'}...")
+                
                 # 向量化文本
                 start_time = time.time()
                 logger.debug(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
-                embeddings = embedding_model.embed_documents(batch_texts)
+                embeddings = embedding_model.embed_documents(cleaned_texts)
                 embedding_time = time.time() - start_time
                 logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
 
