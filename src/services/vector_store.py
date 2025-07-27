@@ -121,28 +121,38 @@ class VectorStore:
             bool: 是否添加成功
         """
         try:
+            logger.info(f"💾 [存储开始] 集合: {collection_name} - 准备存储 {len(documents)} 个文档到向量数据库")
             collection = self.client.get_collection(collection_name)
             batch_size = batch_size or settings.EMBEDDING_BATCH_SIZE
 
             total_docs = len(documents)
-            logger.info(f"开始向集合 {collection_name} 添加 {total_docs} 个文档")
+            total_batches = (total_docs + batch_size - 1) // batch_size
+            logger.info(f"📊 [存储配置] 集合: {collection_name} - 批次大小: {batch_size}, 总批次数: {total_batches}")
 
             for i in range(0, total_docs, batch_size):
+                batch_num = i // batch_size + 1
                 batch_docs = documents[i:i + batch_size]
                 batch_embeddings = embeddings[i:i + batch_size]
+                actual_batch_size = len(batch_docs)
+
+                logger.debug(f"🔄 [批次准备] 集合: {collection_name} - 准备第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
 
                 # 准备批次数据
                 ids = [f"chunk_{collection_name}_{i + j}" for j in range(len(batch_docs))]
                 documents_content = [doc.page_content for doc in batch_docs]
                 metadatas = []
 
-                for doc in batch_docs:
+                for j, doc in enumerate(batch_docs):
                     metadata = doc.metadata.copy()
                     # 将文档内容也存入元数据（ChromaDB 最佳实践）
                     metadata["content"] = doc.page_content
                     metadatas.append(metadata)
+                    
+                    if j < 3:  # 只记录前3个文档的详细信息
+                        logger.debug(f"📄 [文档信息] ID: {ids[j]}, 文件: {metadata.get('file_path', 'unknown')}, 大小: {len(doc.page_content)} 字符")
 
                 # 批量添加到 ChromaDB
+                logger.debug(f"💾 [写入数据库] 集合: {collection_name} - 正在写入第 {batch_num} 批次到 ChromaDB...")
                 collection.add(
                     ids=ids,
                     embeddings=batch_embeddings,
@@ -150,13 +160,13 @@ class VectorStore:
                     metadatas=metadatas
                 )
 
-                logger.info(f"已添加批次 {i // batch_size + 1}/{(total_docs + batch_size - 1) // batch_size}")
+                logger.info(f"✅ [批次完成] 集合: {collection_name} - 第 {batch_num}/{total_batches} 批次存储成功 ({actual_batch_size} 个文档)")
 
-            logger.info(f"成功向集合 {collection_name} 添加了 {total_docs} 个文档")
+            logger.info(f"🎉 [存储完成] 集合: {collection_name} - 成功存储 {total_docs} 个文档到向量数据库")
             return True
 
         except Exception as e:
-            logger.error(f"向集合添加文档失败 {collection_name}: {str(e)}")
+            logger.error(f"❌ [存储失败] 集合: {collection_name} - 向量数据库存储失败: {str(e)}")
             return False
 
     def query_collection(
