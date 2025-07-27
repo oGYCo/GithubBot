@@ -9,11 +9,11 @@ import logging
 import fnmatch
 from typing import List, Dict, Any, Optional, Iterator, Tuple
 import chardet
-from langchain.text_splitter import (
+from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     Language,
 )
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 from ..core.config import settings
 

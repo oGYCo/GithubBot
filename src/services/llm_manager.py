@@ -6,10 +6,10 @@ LLM 模型管理器
 
 import logging
 from typing import Dict, Optional, Union
-from langchain_openai import ChatOpenAI, OpenAI
-from langchain_openai import AzureChatOpenAI
-from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
-from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI, OpenAI, AzureChatOpenAI
+from langchain_community.llms import HuggingFacePipeline
+from langchain_huggingface import ChatHuggingFace
+from langchain_community.chat_models import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseLLM, BaseChatModel
 

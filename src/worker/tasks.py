@@ -67,7 +67,7 @@ def process_query(self, session_id: str, request_data: dict):
         # 返回结果
         result = {
             "success": True,
-            "data": query_response.dict() if hasattr(query_response, 'dict') else query_response,
+            "data": query_response.model_dump() if hasattr(query_response, 'model_dump') else query_response,
             "session_id": session_id
         }
         

@@ -102,7 +102,8 @@ class QueryService:
             )
 
         finally:
-            db.close()
+            if db:
+                db.close()
 
     def _validate_session(self, db: Session, session_id: str) -> Optional[AnalysisSession]:
         """
@@ -492,7 +493,7 @@ class QueryService:
                 answer=response.answer,
                 retrieved_chunks_count=len(retrieved_chunks),
                 generation_mode=request.generation_mode.value,
-                llm_config=request.llm_config.dict() if request.llm_config else None,
+                llm_config=request.llm_config.model_dump() if request.llm_config else None,
                 retrieval_time=response.retrieval_time,
                 generation_time=response.generation_time,
                 total_time=response.total_time

@@ -162,13 +162,18 @@ docker-compose ps
 
 向以下端点发送 `POST` 请求，开始分析一个仓库。这是一个异步操作，API 会立即返回一个任务 ID。
 
-- **URL**: `/api/v1/repositories/`
+- **URL**: `/api/v1/repos/analyze`
 - **Method**: `POST`
 - **Body**:
 
 ```json
 {
-  "repo_url": "https://github.com/tiangolo/fastapi"
+  "repo_url": "https://github.com/tiangolo/fastapi",
+  "embedding_config": {
+    "provider": "openai",
+    "model_name": "text-embedding-3-small",
+    "api_key": "your-openai-api-key"
+  }
 }
 ```
 
@@ -176,11 +181,16 @@ docker-compose ps
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/api/v1/repositories/' \
+  'http://localhost:8000/api/v1/repos/analyze' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "repo_url": "https://github.com/tiangolo/fastapi"
+  "repo_url": "https://github.com/tiangolo/fastapi",
+  "embedding_config": {
+    "provider": "openai",
+    "model_name": "text-embedding-3-small",
+    "api_key": "your-openai-api-key"
+  }
 }'
 ```
 
@@ -188,20 +198,29 @@ curl -X 'POST' \
 
 使用上一步返回的 `session_id` 来检查仓库的分析进度。
 
-- **URL**: `/api/v1/repositories/{session_id}/status`
+- **URL**: `/api/v1/repos/status/{session_id}`
 - **Method**: `GET`
 
 ### 3. 与仓库对话
 
-当仓库状态变为 `COMPLETED` 后，您就可以开始提问了。
+当仓库状态变为 `SUCCESS` 后，您就可以开始提问了。
 
-- **URL**: `/api/v1/repositories/{session_id}/query`
+- **URL**: `/api/v1/repos/query`
 - **Method**: `POST`
 - **Body**:
 
 ```json
 {
-  "query": "How to handle CORS in FastAPI?"
+  "session_id": "your-session-id",
+  "question": "How to handle CORS in FastAPI?",
+  "generation_mode": "service",
+  "llm_config": {
+    "provider": "openai",
+    "model_name": "gpt-4",
+    "api_key": "your-openai-api-key",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
 }
 ```
 
@@ -209,11 +228,20 @@ curl -X 'POST' \
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/api/v1/repositories/{your_session_id}/query' \
+  'http://localhost:8000/api/v1/repos/query' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "query": "How to handle CORS in FastAPI?"
+  "session_id": "your-session-id",
+  "question": "How to handle CORS in FastAPI?",
+  "generation_mode": "service",
+  "llm_config": {
+    "provider": "openai",
+    "model_name": "gpt-4",
+    "api_key": "your-openai-api-key",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
 }'
 ```
 

@@ -110,7 +110,9 @@ services:
       dockerfile: Dockerfile
     container_name: github_bot_flower
     environment:
+      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
     ports:
       - "5555:5555"
     depends_on:
@@ -118,7 +120,7 @@ services:
     networks:
       - github_bot_network
     restart: unless-stopped
-    command: flower -A src.worker.celery_app --broker=${CELERY_BROKER_URL} --address=0.0.0.0
+    command: celery -A src.worker.celery_app flower --address=0.0.0.0 --port=5555
 
 volumes:
   postgres_data:

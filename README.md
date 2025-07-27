@@ -142,7 +142,28 @@ OPENAI_API_KEY="sk-..."
 
 ### 4. Launch Services
 
-Build and start all services with a single command using Docker Compose:
+#### Option A: One-Click Start (Recommended)
+
+**For Linux/macOS:**
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**For Windows:**
+- **Method 1 (Batch file)**: Double-click `start.bat` or run in Command Prompt:
+  ```cmd
+  start.bat
+  ```
+
+- **Method 2 (PowerShell)**: Right-click `start.ps1` → "Run with PowerShell" or run in PowerShell:
+  ```powershell
+  .\start.ps1
+  ```
+
+#### Option B: Manual Docker Compose
+
+Build and start all services manually:
 
 ```bash
 docker-compose up --build -d
@@ -168,13 +189,18 @@ Once the services are running, the API will be available at `http://localhost:80
 
 Send a `POST` request to the following endpoint to start analyzing a repository. This is an asynchronous operation, and the API will immediately return a task ID.
 
-- **URL**: `/api/v1/repositories/`
+- **URL**: `/api/v1/repos/analyze`
 - **Method**: `POST`
 - **Body**:
 
 ```json
 {
-  "repo_url": "https://github.com/tiangolo/fastapi"
+  "repo_url": "https://github.com/tiangolo/fastapi",
+  "embedding_config": {
+    "provider": "openai",
+    "model_name": "text-embedding-3-small",
+    "api_key": "your-openai-api-key"
+  }
 }
 ```
 
@@ -182,11 +208,16 @@ Send a `POST` request to the following endpoint to start analyzing a repository.
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/api/v1/repositories/' \
+  'http://localhost:8000/api/v1/repos/analyze' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "repo_url": "https://github.com/tiangolo/fastapi"
+  "repo_url": "https://github.com/tiangolo/fastapi",
+  "embedding_config": {
+    "provider": "openai",
+    "model_name": "text-embedding-3-small",
+    "api_key": "your-openai-api-key"
+  }
 }'
 ```
 
@@ -194,20 +225,29 @@ curl -X 'POST' \
 
 Use the `session_id` returned from the previous step to check the analysis progress.
 
-- **URL**: `/api/v1/repositories/{session_id}/status`
+- **URL**: `/api/v1/repos/status/{session_id}`
 - **Method**: `GET`
 
 ### 3. Chat with the Repository
 
-Once the repository status changes to `COMPLETED`, you can start asking questions.
+Once the repository status changes to `SUCCESS`, you can start asking questions.
 
-- **URL**: `/api/v1/repositories/{session_id}/query`
+- **URL**: `/api/v1/repos/query`
 - **Method**: `POST`
 - **Body**:
 
 ```json
 {
-  "query": "How to handle CORS in FastAPI?"
+  "session_id": "your-session-id",
+  "question": "How to handle CORS in FastAPI?",
+  "generation_mode": "service",
+  "llm_config": {
+    "provider": "openai",
+    "model_name": "gpt-4",
+    "api_key": "your-openai-api-key",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
 }
 ```
 

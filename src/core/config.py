@@ -153,11 +153,21 @@ class Settings(BaseSettings):
     EXCLUDED_DIRECTORIES: List[str] = ".git,node_modules,dist,build,venv,.venv,target"
 
     @field_validator("ALLOWED_FILE_EXTENSIONS", "EXCLUDED_DIRECTORIES", mode='before')
-    def parse_comma_separated_string(cls, v: str) -> List[str]:
+    def parse_comma_separated_string(cls, v) -> List[str]:
         """将逗号分隔的字符串解析为列表"""
         if not v:
             return []
-        return [item.strip() for item in v.split(',') if item.strip()]
+        
+        # 如果已经是列表，直接返回
+        if isinstance(v, list):
+            return [str(item).strip() for item in v if item]
+        
+        # 如果是字符串，按逗号分隔
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        
+        # 其他类型转换为字符串后处理
+        return [str(v).strip()] if v else []
 
     #---混合检索返回的文件个数---
     FINAL_CONTEXT_TOP_K: int = 5
@@ -184,7 +194,63 @@ def setup_logging():
 
 def validate_config():
     """在应用启动时验证关键配置"""
+    errors = []
+    warnings = []
+    
+    # 验证 API Key
     if settings.API_KEY:
         logging.info("API Key 已配置。")
     else:
-        logging.warning("警告: API_KEY 未设置，API 将无保护。")
+        warnings.append("API_KEY 未设置，API 将无保护。")
+    
+    # 验证数据库配置
+    if not settings.DATABASE_URL:
+        errors.append("DATABASE_URL 配置无效")
+    
+    # 验证 Redis 配置
+    if not settings.REDIS_URL:
+        errors.append("REDIS_URL 配置无效")
+    
+    # 验证端口范围
+    if not (1 <= settings.API_PORT <= 65535):
+        errors.append(f"API_PORT {settings.API_PORT} 不在有效范围内 (1-65535)")
+    
+    if not (1 <= settings.POSTGRES_PORT <= 65535):
+        errors.append(f"POSTGRES_PORT {settings.POSTGRES_PORT} 不在有效范围内 (1-65535)")
+    
+    if not (1 <= settings.REDIS_PORT <= 65535):
+        errors.append(f"REDIS_PORT {settings.REDIS_PORT} 不在有效范围内 (1-65535)")
+    
+    # 验证批处理大小
+    if settings.EMBEDDING_BATCH_SIZE <= 0:
+        errors.append("EMBEDDING_BATCH_SIZE 必须大于 0")
+    
+    if settings.CHUNK_SIZE <= 0:
+        errors.append("CHUNK_SIZE 必须大于 0")
+    
+    if settings.CHUNK_OVERLAP < 0:
+        errors.append("CHUNK_OVERLAP 不能为负数")
+    
+    if settings.CHUNK_OVERLAP >= settings.CHUNK_SIZE:
+        errors.append("CHUNK_OVERLAP 不能大于等于 CHUNK_SIZE")
+    
+    # 验证检索配置
+    if settings.VECTOR_SEARCH_TOP_K <= 0:
+        errors.append("VECTOR_SEARCH_TOP_K 必须大于 0")
+    
+    if settings.BM25_SEARCH_TOP_K <= 0:
+        errors.append("BM25_SEARCH_TOP_K 必须大于 0")
+    
+    if settings.FINAL_CONTEXT_TOP_K <= 0:
+        errors.append("FINAL_CONTEXT_TOP_K 必须大于 0")
+    
+    # 输出警告
+    for warning in warnings:
+        logging.warning(f"警告: {warning}")
+    
+    # 如果有错误，抛出异常
+    if errors:
+        error_msg = "配置验证失败:\n" + "\n".join(f"- {error}" for error in errors)
+        raise ValueError(error_msg)
+    
+    logging.info("配置验证通过")
