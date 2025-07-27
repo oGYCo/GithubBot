@@ -1,7 +1,14 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from ....schemas.repository import *
 import uuid
 from ....services.task_queue import task_queue
+from ....worker.tasks import process_repository_task
+from ....db.session import get_db_session
+from ....db.models import AnalysisSession, TaskStatus
+from datetime import datetime, timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/repos",
@@ -13,17 +20,91 @@ router = APIRouter(
 @router.post("/analyze")
 async def analyze(req: RepoAnalyzeRequest):
     """
-    Receive requests containing embedding_config, then push to Redis queue a task
-    to analyze the embeddings
+    分析仓库
+    接收包含 embedding_config 的请求，并将任务推送到 Celery 队列进行异步处理
     """
-    return {"message": "Hello World"}
+    try:
+        # 生成唯一的会话ID
+        session_id = str(uuid.uuid4())
+        
+        # 创建数据库会话记录
+        db = get_db_session()
+        try:
+            analysis_session = AnalysisSession(
+                session_id=session_id,
+                repository_url=req.repo_url,
+                status=TaskStatus.PENDING,
+                embedding_config=req.embedding_config.dict() if hasattr(req.embedding_config, 'dict') else req.embedding_config.__dict__,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(analysis_session)
+            db.commit()
+            logger.info(f"创建分析会话: {session_id}")
+        except Exception as e:
+            logger.error(f"创建会话记录失败: {str(e)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Failed to create session")
+        finally:
+            db.close()
+        
+        # 将任务推送到 Celery
+        task = process_repository_task.delay(
+            repo_url=req.repo_url,
+            session_id=session_id,
+            embedding_config=req.embedding_config.dict() if hasattr(req.embedding_config, 'dict') else req.embedding_config.__dict__
+        )
+        
+        return {
+            "session_id": session_id,
+            "task_id": task.id,
+            "status": "queued",
+            "message": "Repository analysis has been queued for processing"
+        }
+        
+    except Exception as e:
+        logger.error(f"启动分析任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to start analysis: {str(e)}")
+
 
 @router.get("/status/{session_id}")
 async def status(session_id: str):
     """
-    Receive session_id from frontend, return the status of this session
+    获取分析会话状态
+    从数据库中获取指定会话的状态信息
     """
-    return {"message": "Hello World"}
+    try:
+        db = get_db_session()
+        try:
+            session = db.query(AnalysisSession).filter(
+                AnalysisSession.session_id == session_id
+            ).first()
+            
+            if not session:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            return {
+                "session_id": session_id,
+                "status": session.status.value if hasattr(session.status, 'value') else session.status,
+                "repository_url": session.repository_url,
+                "repository_name": session.repository_name,
+                "repository_owner": session.repository_owner,
+                "total_files": session.total_files,
+                "processed_files": session.processed_files,
+                "total_chunks": session.total_chunks,
+                "indexed_chunks": session.indexed_chunks,
+                "created_at": session.created_at.isoformat() if session.created_at else None,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "completed_at": session.completed_at.isoformat() if session.completed_at else None,
+                "error_message": session.error_message
+            }
+        finally:
+            db.close()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取会话状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get session status: {str(e)}")
 
 @router.post("/query")
 async def query(req: QueryRequest):
