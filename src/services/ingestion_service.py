@@ -79,7 +79,7 @@ class IngestionService:
 
             # 创建向量数据库集合
             logger.info(f"🗄️ [数据库] 会话ID: {session_id} - 创建向量数据库集合")
-            if not vector_store.create_collection(session_id):
+            if not vector_store.create_collection(session_id, embedding_model):
                 raise Exception("创建向量数据库集合失败")
             logger.info(f"✅ [数据库就绪] 会话ID: {session_id} - 向量数据库集合创建成功")
             self._update_task_progress(task_instance, 20, "向量数据库集合创建完成")
