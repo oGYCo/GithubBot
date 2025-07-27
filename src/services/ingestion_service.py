@@ -63,7 +63,7 @@ class IngestionService:
                 api_base=embedding_config.get("api_base"),
                 api_version=embedding_config.get("api_version"),
                 deployment_name=embedding_config.get("deployment_name"),
-                extra_params=embedding_config.get("extra_params", {})
+                extra_params=embedding_config.get("extra_params") or {}
             )
 
             # 加载 embedding 模型

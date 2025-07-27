@@ -52,6 +52,10 @@ class EmbeddingConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'EmbeddingConfig':
         """从字典创建配置"""
+        # 确保 extra_params 不为 None
+        if config_dict.get('extra_params') is None:
+            config_dict = config_dict.copy()
+            config_dict['extra_params'] = {}
         return cls(**config_dict)
 
 

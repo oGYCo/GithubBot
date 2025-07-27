@@ -143,3 +143,5 @@ curl -X POST "http://localhost:8000/api/v1/repos/analyze" \
       "api_key": "sk-8bac0158a9ee415ba246ccb2b120f733"
     }
   }'
+
+curl "http://localhost:8000/api/v1/repos/status/bb36ec10-6ee8-4a43-92aa-3b61cffb2bf5"
