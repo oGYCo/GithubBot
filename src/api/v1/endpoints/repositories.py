@@ -34,7 +34,7 @@ async def analyze(req: RepoAnalyzeRequest):
                 session_id=session_id,
                 repository_url=req.repo_url,
                 status=TaskStatus.PENDING,
-                embedding_config=req.embedding_config.dict() if hasattr(req.embedding_config, 'dict') else req.embedding_config.__dict__,
+                embedding_config=req.embedding_config.model_dump(),
                 created_at=datetime.now(timezone.utc)
             )
             db.add(analysis_session)
@@ -45,13 +45,14 @@ async def analyze(req: RepoAnalyzeRequest):
             db.rollback()
             raise HTTPException(status_code=500, detail="Failed to create session")
         finally:
-            db.close()
+            if db:
+                db.close()
         
         # 将任务推送到 Celery
         task = process_repository_task.delay(
             repo_url=req.repo_url,
             session_id=session_id,
-            embedding_config=req.embedding_config.dict() if hasattr(req.embedding_config, 'dict') else req.embedding_config.__dict__
+            embedding_config=req.embedding_config.model_dump()
         )
         
         return {
@@ -98,7 +99,8 @@ async def status(session_id: str):
                 "error_message": session.error_message
             }
         finally:
-            db.close()
+            if db:
+                db.close()
             
     except HTTPException:
         raise

@@ -39,7 +39,8 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     finally:
-        db.close()
+        if db:
+            db.close()
 
 
 def get_db_session() -> Session:

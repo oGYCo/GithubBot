@@ -13,7 +13,7 @@ psycopg2-binary==2.9.10
 
 # Celery 和 Redis
 celery==5.5.3
-redis==6.0.1
+redis==6.2.0
 flower==2.0.1
 
 # 向量数据库
@@ -37,8 +37,9 @@ langchain_mistralai==0.2.11
 # 文本处理和搜索
 rank-bm25==0.2.2
 sentence-transformers==2.2.2
-tiktoken==0.5.2
+tiktoken>=0.7,<1.0
 chardet==5.2.0
+tenacity==8.2.3
 
 # Git 操作
 GitPython==3.1.44

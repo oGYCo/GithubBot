@@ -142,7 +142,28 @@ OPENAI_API_KEY="sk-..."
 
 ### 4. Launch Services
 
-Build and start all services with a single command using Docker Compose:
+#### Option A: One-Click Start (Recommended)
+
+**For Linux/macOS:**
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**For Windows:**
+- **Method 1 (Batch file)**: Double-click `start.bat` or run in Command Prompt:
+  ```cmd
+  start.bat
+  ```
+
+- **Method 2 (PowerShell)**: Right-click `start.ps1` → "Run with PowerShell" or run in PowerShell:
+  ```powershell
+  .\start.ps1
+  ```
+
+#### Option B: Manual Docker Compose
+
+Build and start all services manually:
 
 ```bash
 docker-compose up --build -d
