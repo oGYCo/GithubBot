@@ -64,23 +64,30 @@ class VectorStore:
             bool: 是否创建成功
         """
         try:
+            logger.info(f"🔍 [检查集合] 开始检查集合 {collection_name} 是否存在...")
             # 检查集合是否已存在
             if self.collection_exists(collection_name):
-                logger.info(f"集合 {collection_name} 已存在")
+                logger.info(f"✅ [集合存在] 集合 {collection_name} 已存在")
                 return True
+            
+            logger.info(f"📝 [集合不存在] 集合 {collection_name} 不存在，开始创建...")
+            logger.info(f"🔧 [参数检查] embedding_function 类型: {type(embedding_function)}")
 
             # 创建新集合
+            logger.info(f"🚀 [调用 ChromaDB] 正在调用 client.create_collection...")
             self.client.create_collection(
                 name=collection_name,
                 embedding_function=embedding_function,
                 metadata={"created_by": "GithubBot"}
             )
+            logger.info(f"✅ [ChromaDB 调用完成] client.create_collection 执行成功")
 
-            logger.info(f"成功创建集合: {collection_name}")
+            logger.info(f"🎉 [创建成功] 成功创建集合: {collection_name}")
             return True
 
         except Exception as e:
-            logger.error(f"创建集合失败 {collection_name}: {str(e)}")
+            logger.error(f"❌ [创建失败] 创建集合失败 {collection_name}: {str(e)}")
+            logger.error(f"🔍 [错误详情] 异常类型: {type(e)}, 异常信息: {str(e)}")
             return False
 
     def delete_collection(self, collection_name: str) -> bool:
@@ -257,9 +264,12 @@ class VectorStore:
             bool: 是否存在
         """
         try:
+            logger.info(f"🔍 [检查存在性] 正在调用 client.get_collection({collection_name})...")
             self.client.get_collection(collection_name)
+            logger.info(f"✅ [集合存在] 集合 {collection_name} 存在")
             return True
-        except Exception:
+        except Exception as e:
+            logger.info(f"📝 [集合不存在] 集合 {collection_name} 不存在: {str(e)}")
             return False
 
     def get_all_documents_from_collection(self, collection_name: str) -> List[Dict[str, Any]]:

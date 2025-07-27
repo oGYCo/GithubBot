@@ -79,6 +79,18 @@ class IngestionService:
 
             # 创建向量数据库集合
             logger.info(f"🗄️ [数据库] 会话ID: {session_id} - 创建向量数据库集合")
+            logger.info(f"🔧 [调试] 会话ID: {session_id} - embedding_model 类型: {type(embedding_model)}, 值: {embedding_model}")
+            
+            # 先测试 ChromaDB 连接
+            try:
+                health_status = vector_store.health_check()
+                logger.info(f"🏥 [健康检查] 会话ID: {session_id} - ChromaDB 状态: {health_status}")
+            except Exception as health_e:
+                logger.error(f"❌ [健康检查失败] 会话ID: {session_id} - ChromaDB 连接异常: {str(health_e)}")
+                raise Exception(f"ChromaDB 连接失败: {str(health_e)}")
+            
+            # 创建集合
+            logger.info(f"🔄 [开始创建] 会话ID: {session_id} - 正在调用 create_collection...")
             if not vector_store.create_collection(session_id, embedding_model):
                 raise Exception("创建向量数据库集合失败")
             logger.info(f"✅ [数据库就绪] 会话ID: {session_id} - 向量数据库集合创建成功")
