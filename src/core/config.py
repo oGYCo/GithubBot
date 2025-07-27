@@ -153,11 +153,21 @@ class Settings(BaseSettings):
     EXCLUDED_DIRECTORIES: List[str] = ".git,node_modules,dist,build,venv,.venv,target"
 
     @field_validator("ALLOWED_FILE_EXTENSIONS", "EXCLUDED_DIRECTORIES", mode='before')
-    def parse_comma_separated_string(cls, v: str) -> List[str]:
+    def parse_comma_separated_string(cls, v) -> List[str]:
         """将逗号分隔的字符串解析为列表"""
         if not v:
             return []
-        return [item.strip() for item in v.split(',') if item.strip()]
+        
+        # 如果已经是列表，直接返回
+        if isinstance(v, list):
+            return [str(item).strip() for item in v if item]
+        
+        # 如果是字符串，按逗号分隔
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        
+        # 其他类型转换为字符串后处理
+        return [str(v).strip()] if v else []
 
     #---混合检索返回的文件个数---
     FINAL_CONTEXT_TOP_K: int = 5
