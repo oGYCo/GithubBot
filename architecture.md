@@ -42,24 +42,21 @@ repoinsight_service/
 │   │   └── session.py    # 【会话】创建和管理数据库会话
 │   │
 │   ├── schemas/          # 【数据校验层】负责定义 API 的数据结构
-│   │   ├── __init__.py
 │   │   └── repository.py # 【模型】定义仓库分析相关的请求和响应体模型 (Pydantic)
 │   │
 │   ├── services/         # 【业务逻辑层】负责实现所有核心功能
-│   │   ├── __init__.py
 |   |   ├── embedding_manager.py # 【新】Embedding 模型管理器
 │   │   ├── ingestion_service.py # 【服务】数据注入服务
 |   |   ├── llm_manager.py       # 【新】LLM 管理器
 │   │   ├── query_service.py     # 【服务】问答查询服务
 │   │   └── vector_store.py      # 【服务】向量数据库客户端
+|   |   └── task_queue.py        #  基于redis的，添加query任务到消息队列中和通过session_id查询任务进行状态，以及取消任务、查询任务信息的函数
 │   │
 │   ├── utils/            # 【工具层】负责提供通用的辅助函数
-│   │   ├── __init__.py
 │   │   ├── file_parser.py     # 【工具】文件过滤和专门解析
 │   │   └── git_helper.py      # 【工具】Git 仓库克隆
 │   │
 │   └── worker/           # 【后台任务层】负责处理耗时的异步任务
-│       ├── __init__.py
 │       ├── celery_app.py # 【配置】Celery 应用实例的配置
 │       └── tasks.py      # 【任务】定义具体的后台任务
 │

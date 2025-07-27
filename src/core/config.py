@@ -148,14 +148,9 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 200
 
     # 默认允许处理的文件扩展名列表 (逗号分隔)
-    ALLOWED_FILE_EXTENSIONS: str = (
-        ".py,.js,.jsx,.ts,.tsx,.java,.cpp,.c,.h,.hpp,.cs,.php,.rb,.go,.rs,.swift,.kt,.scala,"
-        ".md,.txt,.rst,.json,.yaml,.yml,.toml,.ini,.cfg,.sh,.sql,.html,.css,.vue,"
-        "dockerfile,makefile,readme,license,changelog"
-    )
-
+    ALLOWED_FILE_EXTENSIONS: List[str] = ".py,.js,.jsx,.ts,.tsx,.java,.cpp,.c,.h,.hpp,.cs,.php,.rb,.go,.rs,.swift,.kt,.scala,.md,.txt,.rst,.json,.yaml,.yml,.toml,.ini,.cfg,.sh,.sql,.html,.css,.vue,dockerfile,makefile,readme,license,changelog"
     # 默认排除的目录列表 (逗号分隔)
-    EXCLUDED_DIRECTORIES: str = ".git,node_modules,dist,build,venv,.venv,target"
+    EXCLUDED_DIRECTORIES: List[str] = ".git,node_modules,dist,build,venv,.venv,target"
 
     @field_validator("ALLOWED_FILE_EXTENSIONS", "EXCLUDED_DIRECTORIES", mode='before')
     def parse_comma_separated_string(cls, v: str) -> List[str]:

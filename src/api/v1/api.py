@@ -1,5 +1,13 @@
-from fastapi import APIRouter
-from .endpoints import repositories # 假设你也有items.py
+"""
+API v1 路由聚合
+聚合所有 v1 版本的 API 路由器
+"""
 
-api = APIRouter()
-api.include_router(repositories.router)
+from fastapi import APIRouter
+from .endpoints.repositories import router as repos_router
+
+# 创建 v1 API 路由器
+api_router = APIRouter()
+
+# 包含各个端点路由器
+api_router.include_router(repos_router)

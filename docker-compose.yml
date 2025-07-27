@@ -1,0 +1,135 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: github_bot_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-repoinsight}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+
+  # Redis 消息队列和缓存
+  redis:
+    image: redis:7-alpine
+    container_name: github_bot_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6380:6379"
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+
+  # ChromaDB 向量数据库
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: github_bot_chromadb
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+    volumes:
+      - chromadb_data:/chroma/chroma
+    ports:
+      - "8001:8000"
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+
+  # 主应用服务
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github_bot_api
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
+      - DEBUG=${DEBUG:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - HUGGINGFACE_HUB_API_TOKEN=${HUGGINGFACE_HUB_API_TOKEN}
+    volumes:
+      - ./src:/app/src
+      - repo_clones:/repo_clones
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github_bot_worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
+      - DEBUG=${DEBUG:-false}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - HUGGINGFACE_HUB_API_TOKEN=${HUGGINGFACE_HUB_API_TOKEN}
+    volumes:
+      - ./src:/app/src
+      - repo_clones:/repo_clones
+    depends_on:
+      - postgres
+      - redis
+      - chromadb
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+    command: celery -A src.worker.celery_app worker --loglevel=info --concurrency=2
+
+  # Celery Flower (监控 Celery 任务)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github_bot_flower
+    environment:
+      - REDIS_URL=${REDIS_URL}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+    networks:
+      - github_bot_network
+    restart: unless-stopped
+    command: flower -A src.worker.celery_app --broker=${CELERY_BROKER_URL} --address=0.0.0.0
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  chromadb_data:
+    driver: local
+  repo_clones:
+    driver: local
+
+networks:
+  github_bot_network:
+    driver: bridge
