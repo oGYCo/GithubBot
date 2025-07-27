@@ -8,11 +8,30 @@ from typing import List, Dict, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
+from chromadb import Documents, EmbeddingFunction, Embeddings
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings as LangChainEmbeddings
 
 from ..core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class LangChainEmbeddingAdapter(EmbeddingFunction):
+    """LangChain Embeddings 到 ChromaDB EmbeddingFunction 的适配器"""
+    
+    def __init__(self, langchain_embedding: LangChainEmbeddings):
+        self.langchain_embedding = langchain_embedding
+    
+    def __call__(self, input: Documents) -> Embeddings:
+        """将文档转换为嵌入向量"""
+        try:
+            # 使用 LangChain 的 embed_documents 方法
+            embeddings = self.langchain_embedding.embed_documents(input)
+            return embeddings
+        except Exception as e:
+            logger.error(f"嵌入向量生成失败: {str(e)}")
+            raise
 
 
 class VectorStore:
@@ -73,11 +92,22 @@ class VectorStore:
             logger.info(f"📝 [集合不存在] 集合 {collection_name} 不存在，开始创建...")
             logger.info(f"🔧 [参数检查] embedding_function 类型: {type(embedding_function)}")
 
+            # 处理 embedding_function
+            chroma_embedding_function = None
+            if embedding_function is not None:
+                if isinstance(embedding_function, LangChainEmbeddings):
+                    # 如果是 LangChain 的 Embeddings，使用适配器包装
+                    logger.info(f"🔄 [适配器包装] 使用适配器包装 LangChain Embeddings")
+                    chroma_embedding_function = LangChainEmbeddingAdapter(embedding_function)
+                else:
+                    # 如果已经是 ChromaDB 的 EmbeddingFunction，直接使用
+                    chroma_embedding_function = embedding_function
+
             # 创建新集合
             logger.info(f"🚀 [调用 ChromaDB] 正在调用 client.create_collection...")
             self.client.create_collection(
                 name=collection_name,
-                embedding_function=embedding_function,
+                embedding_function=chroma_embedding_function,
                 metadata={"created_by": "GithubBot"}
             )
             logger.info(f"✅ [ChromaDB 调用完成] client.create_collection 执行成功")
