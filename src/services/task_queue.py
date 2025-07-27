@@ -95,6 +95,28 @@ class TaskQueue:
             logger.error(f"Error cancelling task {session_id}: {str(e)}")
             return False
     
+    async def cancel_repository_task(self, task_id: str) -> bool:
+        """Cancel a repository analysis task"""
+        try:
+            result = AsyncResult(task_id)
+            result.revoke(terminate=True)
+            logger.info(f"🛑 [任务取消] 仓库分析任务已取消 - 任务ID: {task_id}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ [取消失败] 取消仓库分析任务失败 - 任务ID: {task_id}, 错误: {str(e)}")
+            return False
+    
+    async def get_repository_task_status(self, task_id: str) -> str:
+        """Get repository analysis task status"""
+        try:
+            result = AsyncResult(task_id)
+            status = result.status
+            logger.debug(f"📊 [任务状态] 仓库分析任务状态 - 任务ID: {task_id}, 状态: {status}")
+            return status
+        except Exception as e:
+            logger.error(f"❌ [状态查询失败] 获取仓库分析任务状态失败 - 任务ID: {task_id}, 错误: {str(e)}")
+            return "UNKNOWN"
+    
     async def get_task_info(self, session_id: str) -> Dict[str, Any]:
         """Get comprehensive task information"""
         try:

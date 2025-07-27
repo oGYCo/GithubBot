@@ -62,6 +62,23 @@ async def analyze(req: RepoAnalyzeRequest):
         )
         logger.info(f"✅ [任务队列] 任务推送成功 - 任务ID: {task.id}")
         
+        # 更新数据库记录，保存 task_id
+        db = get_db_session()
+        try:
+            analysis_session = db.query(AnalysisSession).filter(
+                AnalysisSession.session_id == session_id
+            ).first()
+            if analysis_session:
+                analysis_session.task_id = task.id
+                db.commit()
+                logger.info(f"💾 [数据库更新] 任务ID已保存到数据库: {task.id}")
+        except Exception as e:
+            logger.error(f"❌ [数据库错误] 保存任务ID失败: {str(e)}")
+            db.rollback()
+        finally:
+            if db:
+                db.close()
+        
         response = {
             "session_id": session_id,
             "task_id": task.id,
@@ -158,6 +175,78 @@ async def query(req: QueryRequest):
     
     logger.info(f"🎉 [查询响应] 查询请求处理完成 - 任务会话ID: {session_id}")
     return response
+
+@router.post("/analyze/{session_id}/cancel")
+async def cancel_analysis(session_id: str):
+    """
+    停止仓库分析任务
+    """
+    try:
+        logger.info(f"🛑 [停止请求] 收到停止仓库分析请求 - 会话ID: {session_id}")
+        
+        # 从数据库获取任务信息
+        db = get_db_session()
+        try:
+            analysis_session = db.query(AnalysisSession).filter(
+                AnalysisSession.session_id == session_id
+            ).first()
+            
+            if not analysis_session:
+                logger.warning(f"⚠️ [会话不存在] 未找到会话 - 会话ID: {session_id}")
+                raise HTTPException(status_code=404, detail="Analysis session not found")
+            
+            # 检查任务状态
+            if analysis_session.status in [TaskStatus.SUCCESS, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                logger.info(f"ℹ️ [任务已完成] 任务已处于终态 - 状态: {analysis_session.status.value}")
+                return {
+                    "session_id": session_id,
+                    "status": analysis_session.status.value,
+                    "message": f"Task is already in final state: {analysis_session.status.value}"
+                }
+            
+            # 获取 Celery 任务ID
+            task_id = analysis_session.task_id
+            if not task_id:
+                logger.error(f"❌ [任务ID缺失] 会话缺少任务ID - 会话ID: {session_id}")
+                raise HTTPException(status_code=400, detail="Task ID not found for this session")
+            
+            # 取消 Celery 任务
+            logger.info(f"🛑 [取消任务] 正在取消Celery任务 - 任务ID: {task_id}")
+            cancel_success = await task_queue.cancel_repository_task(task_id)
+            
+            if cancel_success:
+                # 更新数据库状态为已取消
+                analysis_session.status = TaskStatus.CANCELLED
+                analysis_session.completed_at = datetime.now(timezone.utc)
+                analysis_session.error_message = "Task cancelled by user request"
+                db.commit()
+                
+                logger.info(f"✅ [取消成功] 仓库分析任务已成功取消 - 会话ID: {session_id}")
+                return {
+                    "session_id": session_id,
+                    "status": "cancelled",
+                    "message": "Repository analysis task has been cancelled successfully"
+                }
+            else:
+                logger.error(f"❌ [取消失败] 无法取消Celery任务 - 任务ID: {task_id}")
+                raise HTTPException(status_code=500, detail="Failed to cancel the task")
+                
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ [数据库错误] 停止任务时发生数据库错误: {str(e)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database error while cancelling task")
+        finally:
+            if db:
+                db.close()
+                
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"💥 [停止错误] 停止仓库分析任务失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel analysis: {str(e)}")
+
 
 @router.get("/query/status/{session_id}")
 async def query_status(session_id: str):
