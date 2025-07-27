@@ -16,7 +16,7 @@ from ..db.session import get_db_session
 from ..db.models import AnalysisSession, QueryLog, TaskStatus
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
 from ..services.llm_manager import LLMManager, LLMConfig
-from ..services.vector_store import vector_store
+from ..services.vector_store import get_vector_store
 from ..schemas.repository import (
     QueryRequest, QueryResponse, RetrievedChunk,
     GenerationMode, LLMConfig as LLMConfigSchema
@@ -229,7 +229,7 @@ class QueryService:
 
             # 在向量数据库中搜索
             logger.debug(f"🔎 [数据库检索] 会话ID: {session_id} - 正在向量数据库中搜索相似文档...")
-            results = vector_store.query_collection(
+            results = get_vector_store().query_collection(
                 collection_name=session_id,
                 query_embedding=question_embedding,
                 n_results=settings.VECTOR_SEARCH_TOP_K
@@ -334,7 +334,7 @@ class QueryService:
 
         try:
             # 获取所有文档
-            documents = vector_store.get_all_documents_from_collection(session_id)
+            documents = get_vector_store().get_all_documents_from_collection(session_id)
             if not documents:
                 return None
 

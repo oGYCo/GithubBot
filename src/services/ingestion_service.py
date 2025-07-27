@@ -20,7 +20,7 @@ from ..db.models import AnalysisSession, FileMetadata, TaskStatus
 from ..utils.git_helper import GitHelper
 from ..utils.file_parser import FileParser
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
-from ..services.vector_store import vector_store
+from ..services.vector_store import get_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,7 @@ class IngestionService:
             
             # 先测试 ChromaDB 连接
             try:
+                vector_store = get_vector_store()
                 health_status = vector_store.health_check()
                 logger.info(f"🏥 [健康检查] 会话ID: {session_id} - ChromaDB 状态: {health_status}")
             except Exception as health_e:
@@ -341,7 +342,7 @@ class IngestionService:
 
                 # 存储到向量数据库
                 logger.debug(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
-                success = vector_store.add_documents_to_collection(
+                success = get_vector_store().add_documents_to_collection(
                     session_id, batch_docs, embeddings, len(batch_docs)
                 )
 

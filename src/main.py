@@ -76,7 +76,7 @@ async def root():
 async def health_check():
     """健康检查"""
     from .db.session import get_db_session
-    from .services.vector_store import vector_store
+    from .services.vector_store import get_vector_store
     
     health_status = {
         "status": "healthy",
@@ -108,7 +108,7 @@ async def health_check():
     
     # ChromaDB 连接检查
     try:
-        vector_store._connect()
+        get_vector_store().health_check()
         health_status["checks"]["chromadb"] = "healthy"
     except Exception as e:
         health_status["checks"]["chromadb"] = f"unhealthy: {str(e)}"

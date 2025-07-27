@@ -328,5 +328,12 @@ class VectorStore:
             }
 
 
-# 全局向量存储实例
-vector_store = VectorStore()
+# 全局向量存储实例（延迟初始化）
+vector_store = None
+
+def get_vector_store() -> VectorStore:
+    """获取向量存储实例（延迟初始化）"""
+    global vector_store
+    if vector_store is None:
+        vector_store = VectorStore()
+    return vector_store
