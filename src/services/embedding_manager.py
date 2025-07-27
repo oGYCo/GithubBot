@@ -15,7 +15,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.embeddings import Embeddings
-
+from ..core.config import settings
 logger = logging.getLogger(__name__)
 
 
@@ -408,8 +408,10 @@ class EmbeddingManager:
                 **config.extra_params
             }
 
-            if config.api_key:
-                params["api_key"] = config.api_key
+            # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
+            api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
+            if api_key:
+                params["api_key"] = api_key
 
             return OpenAIEmbeddings(**params)
         except Exception as e:

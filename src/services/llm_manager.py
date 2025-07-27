@@ -12,6 +12,7 @@ from langchain_huggingface import ChatHuggingFace
 from langchain_community.chat_models import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseLLM, BaseChatModel
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -243,8 +244,11 @@ class LLMManager:
 
         if config.max_tokens:
             params["max_tokens"] = config.max_tokens
-        if config.api_key:
-            params["api_key"] = config.api_key
+            
+        # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
+        api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
+        if api_key:
+            params["api_key"] = api_key
 
         return ChatOpenAI(**params)
 
