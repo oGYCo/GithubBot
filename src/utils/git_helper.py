@@ -160,16 +160,21 @@ class GitHelper:
                         shutil.rmtree(target_dir)
 
             # 克隆仓库
-            logger.info(f"开始克隆仓库 {url} 到 {target_dir}")
+            logger.info(f"📥 [开始克隆] 仓库: {url}")
+            logger.info(f"📁 [目标目录] 路径: {target_dir}")
+            logger.info(f"⚙️ [克隆配置] 浅克隆(depth=1), 单分支, 超时: {timeout or getattr(settings, 'CLONE_TIMEOUT', 300)}s")
+            
+            # 注意：GitPython 的 timeout 参数可能不被所有版本支持
+            # 使用基本的克隆参数，避免 timeout 导致的兼容性问题
             repo = git.Repo.clone_from(
                 url=url,
                 to_path=target_dir,
                 depth=1,  # 浅克隆，只获取最新提交
-                single_branch=True,  # 只克隆默认分支
-                timeout=timeout or getattr(settings, 'CLONE_TIMEOUT', 300)
+                single_branch=True  # 只克隆默认分支
             )
 
-            logger.info(f"成功克隆仓库到 {target_dir}")
+            logger.info(f"✅ [克隆成功] 仓库已克隆到: {target_dir}")
+            logger.info(f"📊 [仓库信息] 当前分支: {repo.active_branch.name}, 最新提交: {repo.head.commit.hexsha[:8]}")
             return target_dir
 
         except GitCommandError as e:

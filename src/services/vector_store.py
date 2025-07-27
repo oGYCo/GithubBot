@@ -8,11 +8,51 @@ from typing import List, Dict, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
+from chromadb import Documents, EmbeddingFunction, Embeddings
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings as LangChainEmbeddings
 
 from ..core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class LangChainEmbeddingAdapter(EmbeddingFunction[Documents]):
+    """LangChain Embeddings 到 ChromaDB EmbeddingFunction 的适配器"""
+    
+    def __init__(self, langchain_embedding: LangChainEmbeddings):
+        self.langchain_embedding = langchain_embedding
+    
+    def __call__(self, input: Documents) -> Embeddings:
+        """将文档转换为嵌入向量"""
+        try:
+            logger.debug(f"🔧 [适配器调用] 输入类型: {type(input)}, 输入内容: {input[:2] if isinstance(input, list) and len(input) > 0 else input}")
+            
+            # 确保输入是字符串列表
+            if not isinstance(input, list):
+                logger.warning(f"🔧 [输入格式] 输入不是列表类型: {type(input)}, 转换为列表")
+                input = [str(input)]
+            
+            # 检查列表中的每个元素是否为字符串
+            cleaned_input = []
+            for i, item in enumerate(input):
+                if not isinstance(item, str):
+                    logger.warning(f"🔧 [元素格式] 第 {i} 个元素不是字符串: {type(item)}, 转换为字符串")
+                    item = str(item) if item is not None else ""
+                cleaned_input.append(item)
+            
+            logger.debug(f"🔧 [适配器处理] 清理后的输入长度: {len(cleaned_input)}")
+            
+            # 使用 LangChain 的 embed_documents 方法
+            embeddings = self.langchain_embedding.embed_documents(cleaned_input)
+            
+            logger.debug(f"🔧 [适配器结果] 生成嵌入向量数量: {len(embeddings) if embeddings else 0}")
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"❌ [适配器失败] 嵌入向量生成失败: {str(e)}")
+            logger.error(f"🔍 [错误详情] 输入类型: {type(input)}, 输入长度: {len(input) if hasattr(input, '__len__') else 'N/A'}")
+            raise
 
 
 class VectorStore:
@@ -64,23 +104,41 @@ class VectorStore:
             bool: 是否创建成功
         """
         try:
+            logger.info(f"🔍 [检查集合] 开始检查集合 {collection_name} 是否存在...")
             # 检查集合是否已存在
             if self.collection_exists(collection_name):
-                logger.info(f"集合 {collection_name} 已存在")
+                logger.info(f"✅ [集合存在] 集合 {collection_name} 已存在")
                 return True
+            
+            logger.info(f"📝 [集合不存在] 集合 {collection_name} 不存在，开始创建...")
+            logger.info(f"🔧 [参数检查] embedding_function 类型: {type(embedding_function)}")
+
+            # 处理 embedding_function
+            chroma_embedding_function = None
+            if embedding_function is not None:
+                if isinstance(embedding_function, LangChainEmbeddings):
+                    # 如果是 LangChain 的 Embeddings，使用适配器包装
+                    logger.info(f"🔄 [适配器包装] 使用适配器包装 LangChain Embeddings")
+                    chroma_embedding_function = LangChainEmbeddingAdapter(embedding_function)
+                else:
+                    # 如果已经是 ChromaDB 的 EmbeddingFunction，直接使用
+                    chroma_embedding_function = embedding_function
 
             # 创建新集合
+            logger.info(f"🚀 [调用 ChromaDB] 正在调用 client.create_collection...")
             self.client.create_collection(
                 name=collection_name,
-                embedding_function=embedding_function,
+                embedding_function=chroma_embedding_function,
                 metadata={"created_by": "GithubBot"}
             )
+            logger.info(f"✅ [ChromaDB 调用完成] client.create_collection 执行成功")
 
-            logger.info(f"成功创建集合: {collection_name}")
+            logger.info(f"🎉 [创建成功] 成功创建集合: {collection_name}")
             return True
 
         except Exception as e:
-            logger.error(f"创建集合失败 {collection_name}: {str(e)}")
+            logger.error(f"❌ [创建失败] 创建集合失败 {collection_name}: {str(e)}")
+            logger.error(f"🔍 [错误详情] 异常类型: {type(e)}, 异常信息: {str(e)}")
             return False
 
     def delete_collection(self, collection_name: str) -> bool:
@@ -121,28 +179,38 @@ class VectorStore:
             bool: 是否添加成功
         """
         try:
+            logger.info(f"💾 [存储开始] 集合: {collection_name} - 准备存储 {len(documents)} 个文档到向量数据库")
             collection = self.client.get_collection(collection_name)
             batch_size = batch_size or settings.EMBEDDING_BATCH_SIZE
 
             total_docs = len(documents)
-            logger.info(f"开始向集合 {collection_name} 添加 {total_docs} 个文档")
+            total_batches = (total_docs + batch_size - 1) // batch_size
+            logger.info(f"📊 [存储配置] 集合: {collection_name} - 批次大小: {batch_size}, 总批次数: {total_batches}")
 
             for i in range(0, total_docs, batch_size):
+                batch_num = i // batch_size + 1
                 batch_docs = documents[i:i + batch_size]
                 batch_embeddings = embeddings[i:i + batch_size]
+                actual_batch_size = len(batch_docs)
+
+                logger.debug(f"🔄 [批次准备] 集合: {collection_name} - 准备第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
 
                 # 准备批次数据
                 ids = [f"chunk_{collection_name}_{i + j}" for j in range(len(batch_docs))]
                 documents_content = [doc.page_content for doc in batch_docs]
                 metadatas = []
 
-                for doc in batch_docs:
+                for j, doc in enumerate(batch_docs):
                     metadata = doc.metadata.copy()
                     # 将文档内容也存入元数据（ChromaDB 最佳实践）
                     metadata["content"] = doc.page_content
                     metadatas.append(metadata)
+                    
+                    if j < 3:  # 只记录前3个文档的详细信息
+                        logger.debug(f"📄 [文档信息] ID: {ids[j]}, 文件: {metadata.get('file_path', 'unknown')}, 大小: {len(doc.page_content)} 字符")
 
                 # 批量添加到 ChromaDB
+                logger.debug(f"💾 [写入数据库] 集合: {collection_name} - 正在写入第 {batch_num} 批次到 ChromaDB...")
                 collection.add(
                     ids=ids,
                     embeddings=batch_embeddings,
@@ -150,13 +218,13 @@ class VectorStore:
                     metadatas=metadatas
                 )
 
-                logger.info(f"已添加批次 {i // batch_size + 1}/{(total_docs + batch_size - 1) // batch_size}")
+                logger.info(f"✅ [批次完成] 集合: {collection_name} - 第 {batch_num}/{total_batches} 批次存储成功 ({actual_batch_size} 个文档)")
 
-            logger.info(f"成功向集合 {collection_name} 添加了 {total_docs} 个文档")
+            logger.info(f"🎉 [存储完成] 集合: {collection_name} - 成功存储 {total_docs} 个文档到向量数据库")
             return True
 
         except Exception as e:
-            logger.error(f"向集合添加文档失败 {collection_name}: {str(e)}")
+            logger.error(f"❌ [存储失败] 集合: {collection_name} - 向量数据库存储失败: {str(e)}")
             return False
 
     def query_collection(
@@ -247,9 +315,12 @@ class VectorStore:
             bool: 是否存在
         """
         try:
+            logger.info(f"🔍 [检查存在性] 正在调用 client.get_collection({collection_name})...")
             self.client.get_collection(collection_name)
+            logger.info(f"✅ [集合存在] 集合 {collection_name} 存在")
             return True
-        except Exception:
+        except Exception as e:
+            logger.info(f"📝 [集合不存在] 集合 {collection_name} 不存在: {str(e)}")
             return False
 
     def get_all_documents_from_collection(self, collection_name: str) -> List[Dict[str, Any]]:
@@ -308,5 +379,12 @@ class VectorStore:
             }
 
 
-# 全局向量存储实例
-vector_store = VectorStore()
+# 全局向量存储实例（延迟初始化）
+vector_store = None
+
+def get_vector_store() -> VectorStore:
+    """获取向量存储实例（延迟初始化）"""
+    global vector_store
+    if vector_store is None:
+        vector_store = VectorStore()
+    return vector_store

@@ -422,18 +422,34 @@ class FileParser:
         Yields:
             Tuple[str, Dict[str, Any]]: (文件路径, 文件信息)
         """
+        logger.info(f"开始扫描仓库文件: {repo_path}")
+        
         # 加载 .gitignore 规则
         self.load_gitignore(repo_path)
+        logger.info("已加载 .gitignore 规则")
+        
+        total_files_found = 0
+        processed_files = 0
+        skipped_files = 0
         
         for root, dirs, files in os.walk(repo_path):
             # 过滤目录
+            original_dirs = len(dirs)
             dirs[:] = [d for d in dirs if not self.should_skip_directory(d)]
+            filtered_dirs = len(dirs)
+            
+            if original_dirs > filtered_dirs:
+                logger.debug(f"跳过 {original_dirs - filtered_dirs} 个目录在: {root}")
+            
+            total_files_found += len(files)
             
             for file_name in files:
                 file_path = os.path.join(root, file_name)
                 
                 # 检查是否应该处理该文件
                 if not self.should_process_file(file_path, repo_path):
+                    skipped_files += 1
+                    logger.debug(f"跳过文件: {os.path.relpath(file_path, repo_path)}")
                     continue
                 
                 # 获取文件相对路径
@@ -453,8 +469,15 @@ class FileParser:
                         "file_extension": os.path.splitext(file_name)[1].lower()
                     }
                     
+                    processed_files += 1
+                    if processed_files % 50 == 0:  # 每处理50个文件记录一次进度
+                        logger.info(f"文件扫描进度: 已处理 {processed_files} 个文件")
+                    
+                    logger.debug(f"扫描到文件: {rel_path} (类型: {file_type}, 大小: {stat.st_size} bytes)")
                     yield file_path, file_info
                     
                 except Exception as e:
                     logger.error(f"获取文件信息失败 {file_path}: {str(e)}")
                     continue
+        
+        logger.info(f"文件扫描完成 - 总计发现: {total_files_found} 个文件, 处理: {processed_files} 个, 跳过: {skipped_files} 个")

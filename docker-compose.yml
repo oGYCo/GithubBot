@@ -60,6 +60,11 @@ services:
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - HUGGINGFACE_HUB_API_TOKEN=${HUGGINGFACE_HUB_API_TOKEN}
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
     volumes:
       - ./src:/app/src
       - repo_clones:/repo_clones
@@ -91,6 +96,11 @@ services:
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
       - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
       - HUGGINGFACE_HUB_API_TOKEN=${HUGGINGFACE_HUB_API_TOKEN}
+      - QWEN_API_KEY=${QWEN_API_KEY}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - COHERE_API_KEY=${COHERE_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
     volumes:
       - ./src:/app/src
       - repo_clones:/repo_clones
@@ -113,10 +123,13 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
     ports:
       - "5555:5555"
     depends_on:
       - redis
+      - chromadb
     networks:
       - github_bot_network
     restart: unless-stopped

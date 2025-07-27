@@ -18,24 +18,33 @@ def process_repository_task(self, repo_url: str, session_id: str, embedding_conf
         embedding_config: Embedding配置字典
     """
     try:
-        logger.info(f"开始处理仓库分析任务: {session_id}, URL: {repo_url}")
+        logger.info(f"🚀 [任务开始] 会话ID: {session_id}")
+        logger.info(f"📂 [仓库信息] URL: {repo_url}")
+        logger.info(f"🤖 [模型配置] Provider: {embedding_config.get('provider')}, Model: {embedding_config.get('model_name')}")
+        
+        # 更新任务进度
+        self.update_state(
+            state='PROGRESS',
+            meta={'current': 0, 'total': 100, 'status': '初始化任务...', 'session_id': session_id}
+        )
         
         # 调用 ingestion_service 处理仓库
         success = ingestion_service.process_repository(
             repo_url=repo_url,
             session_id=session_id,
-            embedding_config=embedding_config
+            embedding_config=embedding_config,
+            task_instance=self  # 传递任务实例用于进度更新
         )
         
         if success:
-            logger.info(f"仓库分析任务完成: {session_id}")
+            logger.info(f"✅ [任务完成] 会话ID: {session_id} - 仓库分析成功完成")
             return {
                 "success": True,
                 "session_id": session_id,
                 "message": "Repository analysis completed successfully"
             }
         else:
-            logger.error(f"仓库分析任务失败: {session_id}")
+            logger.error(f"❌ [任务失败] 会话ID: {session_id} - 仓库分析处理失败")
             return {
                 "success": False,
                 "session_id": session_id,
@@ -43,7 +52,7 @@ def process_repository_task(self, repo_url: str, session_id: str, embedding_conf
             }
             
     except Exception as e:
-        logger.error(f"仓库分析任务异常: {session_id}, 错误: {str(e)}")
+        logger.error(f"💥 [任务异常] 会话ID: {session_id}, 错误详情: {str(e)}")
         return {
             "success": False,
             "session_id": session_id,

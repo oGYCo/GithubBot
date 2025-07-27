@@ -137,6 +137,8 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     HUGGINGFACE_HUB_API_TOKEN: Optional[str] = None
     MISTRAL_API_KEY: Optional[str] = None
+    QWEN_API_KEY: Optional[str] = None
+    DASHSCOPE_API_KEY: Optional[str] = None
 
     # --- Git 配置 ---
     GIT_CLONE_DIR: str = "/repo_clones"

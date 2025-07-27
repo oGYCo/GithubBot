@@ -16,7 +16,7 @@ from ..db.session import get_db_session
 from ..db.models import AnalysisSession, QueryLog, TaskStatus
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
 from ..services.llm_manager import LLMManager, LLMConfig
-from ..services.vector_store import vector_store
+from ..services.vector_store import get_vector_store
 from ..schemas.repository import (
     QueryRequest, QueryResponse, RetrievedChunk,
     GenerationMode, LLMConfig as LLMConfigSchema
@@ -54,7 +54,11 @@ class QueryService:
                     generation_mode=request.generation_mode
                 )
 
+            logger.info(f"🚀 [查询开始] 会话ID: {request.session_id} - 问题: {request.question[:100]}{'...' if len(request.question) > 100 else ''}")
+            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode.value}")
+            
             # 执行混合检索
+            logger.info(f"🔍 [检索阶段] 会话ID: {request.session_id} - 开始执行混合检索")
             retrieval_start = time.time()
             retrieved_chunks = self._hybrid_retrieval(
                 session.session_id,
@@ -62,6 +66,7 @@ class QueryService:
                 request.question
             )
             retrieval_time = int((time.time() - retrieval_start) * 1000)
+            logger.info(f"✅ [检索完成] 会话ID: {request.session_id} - 检索耗时: {retrieval_time}ms, 获得 {len(retrieved_chunks)} 个上下文")
 
             # 准备响应
             response = QueryResponse(
@@ -73,6 +78,7 @@ class QueryService:
             # 根据生成模式处理
             if request.generation_mode == GenerationMode.SERVICE and request.llm_config:
                 # 服务端生成答案
+                logger.info(f"🤖 [生成阶段] 会话ID: {request.session_id} - 开始使用LLM生成答案")
                 generation_start = time.time()
                 answer = self._generate_answer(
                     request.question,
@@ -80,11 +86,15 @@ class QueryService:
                     request.llm_config
                 )
                 generation_time = int((time.time() - generation_start) * 1000)
+                logger.info(f"✅ [生成完成] 会话ID: {request.session_id} - 生成耗时: {generation_time}ms, 答案长度: {len(answer)} 字符")
 
                 response.answer = answer
                 response.generation_time = generation_time
+            else:
+                logger.info(f"📤 [插件模式] 会话ID: {request.session_id} - 仅返回检索上下文，不生成答案")
 
             response.total_time = int((time.time() - start_time) * 1000)
+            logger.info(f"🎉 [查询完成] 会话ID: {request.session_id} - 总耗时: {response.total_time}ms")
 
             # 记录查询日志
             self._log_query(
@@ -147,17 +157,33 @@ class QueryService:
         Returns:
             List[RetrievedChunk]: 检索结果
         """
+        logger.info(f"🔍 [混合检索开始] 会话ID: {session_id} - 开始执行混合检索策略")
+        
         # 1. 向量检索
+        logger.info(f"📊 [步骤1/4] 会话ID: {session_id} - 执行向量检索")
         vector_results = self._vector_search(session_id, embedding_config, question)
 
         # 2. BM25 关键词检索
+        logger.info(f"📊 [步骤2/4] 会话ID: {session_id} - 执行BM25关键词检索")
         bm25_results = self._bm25_search(session_id, question)
 
         # 3. RRF 融合
+        logger.info(f"📊 [步骤3/4] 会话ID: {session_id} - 执行RRF融合算法")
         final_results = self._reciprocal_rank_fusion(vector_results, bm25_results)
 
         # 4. 取前 N 个结果
-        return final_results[:settings.FINAL_CONTEXT_TOP_K]
+        logger.info(f"📊 [步骤4/4] 会话ID: {session_id} - 筛选最终结果")
+        top_results = final_results[:settings.FINAL_CONTEXT_TOP_K]
+        
+        logger.info(f"✅ [混合检索完成] 会话ID: {session_id} - 最终返回 {len(top_results)} 个上下文块")
+        
+        # 记录最终结果的统计信息
+        if top_results:
+            total_chars = sum(len(chunk.content) for chunk in top_results)
+            avg_score = sum(chunk.score for chunk in top_results) / len(top_results)
+            logger.info(f"📈 [结果统计] 会话ID: {session_id} - 总字符数: {total_chars}, 平均分数: {avg_score:.4f}")
+        
+        return top_results
 
     def _vector_search(
             self,
@@ -177,6 +203,8 @@ class QueryService:
             List[Tuple[str, float, Dict[str, Any]]]: (文档ID, 分数, 元数据)
         """
         try:
+            logger.info(f"🔍 [向量检索] 会话ID: {session_id} - 开始向量检索，问题长度: {len(question)} 字符")
+            
             # 创建 embedding 配置对象
             embedding_cfg = EmbeddingConfig(
                 provider=embedding_config["provider"],
@@ -187,34 +215,49 @@ class QueryService:
                 deployment_name=embedding_config.get("deployment_name"),
                 extra_params=embedding_config.get("extra_params", {})
             )
+            logger.debug(f"🤖 [模型配置] 会话ID: {session_id} - 使用 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
 
             # 加载 embedding 模型
+            logger.debug(f"⚡ [模型加载] 会话ID: {session_id} - 正在加载 Embedding 模型...")
             embedding_model = EmbeddingManager.get_embedding_model(embedding_cfg)
+            logger.debug(f"✅ [模型就绪] 会话ID: {session_id} - Embedding 模型加载完成")
 
             # 向量化问题
+            logger.debug(f"🧠 [问题向量化] 会话ID: {session_id} - 正在将问题转换为向量...")
             question_embedding = embedding_model.embed_query(question)
+            logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 问题向量化完成，维度: {len(question_embedding)}")
 
             # 在向量数据库中搜索
-            results = vector_store.query_collection(
+            logger.debug(f"🔎 [数据库检索] 会话ID: {session_id} - 正在向量数据库中搜索相似文档...")
+            results = get_vector_store().query_collection(
                 collection_name=session_id,
                 query_embedding=question_embedding,
                 n_results=settings.VECTOR_SEARCH_TOP_K
             )
+            logger.debug(f"📊 [检索结果] 会话ID: {session_id} - 向量数据库返回结果")
 
             # 转换结果格式
             vector_results = []
             if results["ids"] and results["ids"][0]:
+                logger.info(f"✅ [检索成功] 会话ID: {session_id} - 找到 {len(results['ids'][0])} 个相似文档")
                 for i, doc_id in enumerate(results["ids"][0]):
                     distance = results["distances"][0][i]
                     # 将距离转换为相似度分数（距离越小，分数越高）
                     score = 1.0 / (1.0 + distance)
                     metadata = results["metadatas"][0][i]
                     vector_results.append((doc_id, score, metadata))
+                    
+                    if i < 3:  # 只记录前3个结果的详细信息
+                        file_path = metadata.get('file_path', 'unknown')
+                        logger.debug(f"📄 [相似文档] 排名{i+1}: {file_path}, 距离: {distance:.4f}, 分数: {score:.4f}")
+            else:
+                logger.warning(f"⚠️ [无结果] 会话ID: {session_id} - 向量检索未找到相似文档")
 
+            logger.info(f"🎯 [向量检索完成] 会话ID: {session_id} - 返回 {len(vector_results)} 个结果")
             return vector_results
 
         except Exception as e:
-            logger.error(f"向量检索失败: {str(e)}")
+            logger.error(f"❌ [向量检索失败] 会话ID: {session_id} - {str(e)}")
             return []
 
     def _bm25_search(
@@ -233,19 +276,25 @@ class QueryService:
             List[Tuple[str, float, Dict[str, Any]]]: (文档ID, 分数, 元数据)
         """
         try:
+            logger.info(f"🔤 [BM25检索] 会话ID: {session_id} - 开始关键词检索")
+            
             # 获取或构建 BM25 索引
             bm25_index = self._get_bm25_index(session_id)
             if not bm25_index:
+                logger.warning(f"⚠️ [索引缺失] 会话ID: {session_id} - BM25索引不存在")
                 return []
 
             # 分词（简单空格分割）
             query_tokens = question.lower().split()
+            logger.debug(f"📝 [分词结果] 会话ID: {session_id} - 查询词: {query_tokens}")
 
             # BM25 搜索
+            logger.debug(f"🔍 [BM25计算] 会话ID: {session_id} - 正在计算BM25分数...")
             doc_scores = bm25_index.get_scores(query_tokens)
 
             # 获取文档信息
             documents = self._documents_cache.get(session_id, [])
+            logger.debug(f"📚 [文档缓存] 会话ID: {session_id} - 缓存中有 {len(documents)} 个文档")
 
             # 排序并取前 N 个
             scored_docs = [
@@ -254,11 +303,19 @@ class QueryService:
                 if score > 0
             ]
             scored_docs.sort(key=lambda x: x[1], reverse=True)
+            
+            top_results = scored_docs[:settings.BM25_SEARCH_TOP_K]
+            logger.info(f"✅ [BM25完成] 会话ID: {session_id} - 找到 {len([s for s in doc_scores if s > 0])} 个匹配文档，返回前 {len(top_results)} 个")
+            
+            # 记录前几个结果的详细信息
+            for i, (doc_id, score, metadata) in enumerate(top_results[:3]):
+                file_path = metadata.get('file_path', 'unknown')
+                logger.debug(f"📄 [BM25结果] 排名{i+1}: {file_path}, BM25分数: {score:.4f}")
 
-            return scored_docs[:settings.BM25_SEARCH_TOP_K]
+            return top_results
 
         except Exception as e:
-            logger.error(f"BM25 检索失败: {str(e)}")
+            logger.error(f"❌ [BM25检索失败] 会话ID: {session_id} - {str(e)}")
             return []
 
     def _get_bm25_index(self, session_id: str):
@@ -277,7 +334,7 @@ class QueryService:
 
         try:
             # 获取所有文档
-            documents = vector_store.get_all_documents_from_collection(session_id)
+            documents = get_vector_store().get_all_documents_from_collection(session_id)
             if not documents:
                 return None
 
@@ -319,10 +376,13 @@ class QueryService:
         Returns:
             List[RetrievedChunk]: 融合后的结果
         """
+        logger.info(f"🔀 [RRF融合] 开始融合检索结果 - 向量结果: {len(vector_results)} 个, BM25结果: {len(bm25_results)} 个")
+        
         # 创建文档 ID 到信息的映射
         doc_info = {}
 
         # 处理向量检索结果
+        logger.debug(f"📊 [处理向量结果] 正在处理 {len(vector_results)} 个向量检索结果...")
         for rank, (doc_id, score, metadata) in enumerate(vector_results):
             if doc_id not in doc_info:
                 doc_info[doc_id] = {
@@ -332,9 +392,15 @@ class QueryService:
                     "bm25_rank": None,
                     "rrf_score": 0.0
                 }
-            doc_info[doc_id]["rrf_score"] += 1.0 / (k + rank + 1)
+            rrf_contribution = 1.0 / (k + rank + 1)
+            doc_info[doc_id]["rrf_score"] += rrf_contribution
+            
+            if rank < 3:  # 记录前3个的详细信息
+                file_path = metadata.get('file_path', 'unknown')
+                logger.debug(f"📄 [向量贡献] {file_path} - 排名: {rank+1}, RRF贡献: {rrf_contribution:.4f}")
 
         # 处理 BM25 检索结果
+        logger.debug(f"📊 [处理BM25结果] 正在处理 {len(bm25_results)} 个BM25检索结果...")
         for rank, (doc_id, score, metadata) in enumerate(bm25_results):
             if doc_id not in doc_info:
                 doc_info[doc_id] = {
@@ -346,9 +412,15 @@ class QueryService:
                 }
             else:
                 doc_info[doc_id]["bm25_rank"] = rank + 1
-            doc_info[doc_id]["rrf_score"] += 1.0 / (k + rank + 1)
+            rrf_contribution = 1.0 / (k + rank + 1)
+            doc_info[doc_id]["rrf_score"] += rrf_contribution
+            
+            if rank < 3:  # 记录前3个的详细信息
+                file_path = metadata.get('file_path', 'unknown')
+                logger.debug(f"📄 [BM25贡献] {file_path} - 排名: {rank+1}, RRF贡献: {rrf_contribution:.4f}")
 
         # 按 RRF 分数排序
+        logger.debug(f"🔄 [RRF排序] 正在按RRF分数排序 {len(doc_info)} 个文档...")
         sorted_docs = sorted(
             doc_info.items(),
             key=lambda x: x[1]["rrf_score"],
@@ -357,7 +429,7 @@ class QueryService:
 
         # 转换为 RetrievedChunk 格式
         retrieved_chunks = []
-        for doc_id, info in sorted_docs:
+        for i, (doc_id, info) in enumerate(sorted_docs):
             chunk = RetrievedChunk(
                 id=doc_id,
                 content=info["content"],
@@ -367,7 +439,15 @@ class QueryService:
                 metadata=info["metadata"]
             )
             retrieved_chunks.append(chunk)
+            
+            # 记录前几个最终结果的详细信息
+            if i < 5:
+                file_path = info["metadata"].get('file_path', 'unknown')
+                vector_rank = info["vector_rank"] or "N/A"
+                bm25_rank = info["bm25_rank"] or "N/A"
+                logger.debug(f"🏆 [最终排名{i+1}] {file_path} - RRF分数: {info['rrf_score']:.4f}, 向量排名: {vector_rank}, BM25排名: {bm25_rank}")
 
+        logger.info(f"✅ [RRF融合完成] 融合后共 {len(retrieved_chunks)} 个结果")
         return retrieved_chunks
 
     def _generate_answer(
@@ -388,7 +468,11 @@ class QueryService:
             str: 生成的答案
         """
         try:
+            logger.info(f"🤖 [LLM生成] 开始生成答案 - 模型: {llm_config.provider}/{llm_config.model_name}")
+            logger.info(f"📝 [上下文准备] 使用 {len(retrieved_chunks)} 个文档块作为上下文")
+            
             # 创建 LLM 配置对象
+            logger.debug(f"⚙️ [LLM配置] 提供商: {llm_config.provider}, 模型: {llm_config.model_name}, 温度: {llm_config.temperature}, 最大令牌: {llm_config.max_tokens}")
             llm_cfg = LLMConfig(
                 provider=llm_config.provider,
                 model_name=llm_config.model_name,
@@ -402,23 +486,36 @@ class QueryService:
             )
 
             # 加载 LLM 模型
+            logger.info(f"🔧 [模型加载] 正在加载LLM模型...")
             llm = LLMManager.get_llm(llm_cfg)
+            logger.info(f"✅ [模型就绪] LLM模型加载完成")
 
             # 构建 prompt
+            logger.info(f"📋 [构建Prompt] 正在构建上下文和提示词...")
             context = self._build_context(retrieved_chunks)
             prompt = self._build_prompt(question, context)
+            
+            # 计算上下文统计信息
+            context_chars = len(context)
+            prompt_chars = len(prompt)
+            logger.info(f"📊 [Prompt统计] 上下文长度: {context_chars} 字符, 完整Prompt长度: {prompt_chars} 字符")
 
             # 生成答案
+            logger.info(f"🚀 [开始生成] 正在调用LLM生成答案...")
             response = llm.invoke(prompt)
+            logger.info(f"✅ [生成完成] LLM响应已接收")
 
             # 提取答案文本
             if hasattr(response, 'content'):
-                return response.content
+                answer = response.content
             else:
-                return str(response)
+                answer = str(response)
+            
+            logger.info(f"📤 [答案输出] 生成答案长度: {len(answer)} 字符")
+            return answer
 
         except Exception as e:
-            logger.error(f"生成答案失败: {str(e)}")
+            logger.error(f"❌ [生成失败] LLM答案生成失败: {str(e)}")
             return f"生成答案失败: {str(e)}"
 
     def _build_context(self, retrieved_chunks: List[RetrievedChunk]) -> str:

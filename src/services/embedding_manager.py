@@ -15,7 +15,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.embeddings import Embeddings
-
+from ..core.config import settings
 logger = logging.getLogger(__name__)
 
 
@@ -52,6 +52,10 @@ class EmbeddingConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'EmbeddingConfig':
         """从字典创建配置"""
+        # 确保 extra_params 不为 None
+        if config_dict.get('extra_params') is None:
+            config_dict = config_dict.copy()
+            config_dict['extra_params'] = {}
         return cls(**config_dict)
 
 
@@ -399,17 +403,21 @@ class EmbeddingManager:
     def _create_qwen_embeddings(config: EmbeddingConfig) -> OpenAIEmbeddings:
         """创建 通义千问 Embeddings 实例（使用 OpenAI 兼容接口）"""
         try:
+            # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
+            api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
+            
+            if not api_key:
+                raise EmbeddingError("通义千问模型需要 API Key，请在请求中提供 api_key 或在 .env 文件中设置 QWEN_API_KEY 或 DASHSCOPE_API_KEY")
+            
             params = {
                 "model": config.model_name,
+                "api_key": api_key,
                 "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "show_progress_bar": True,
                 "max_retries": config.max_retries,
                 "timeout": config.timeout,
                 **config.extra_params
             }
-
-            if config.api_key:
-                params["api_key"] = config.api_key
 
             return OpenAIEmbeddings(**params)
         except Exception as e:
@@ -673,6 +681,7 @@ COMMON_EMBEDDING_MODELS = {
         "text-embedding-v1": "text-embedding-v1",
         "text-embedding-v2": "text-embedding-v2",
         "text-embedding-v3": "text-embedding-v3",
+        "text-embedding-v4": "text-embedding-v4",
     },
     "zhipu": {
         "embedding-2": "embedding-2",
@@ -765,9 +774,14 @@ def get_recommended_models() -> Dict[str, Dict[str, str]]:
     """
     return {
         "中文通用": {
+            "provider": "qwen",
+            "model": "text-embedding-v4",
+            "description": "阿里云通义千问最新向量化模型，支持100+语种和代码"
+        },
+        "中文本地": {
             "provider": "huggingface",
             "model": "bge-large-zh-v1.5",
-            "description": "适合中文文档的通用向量化模型"
+            "description": "适合中文文档的本地部署向量化模型"
         },
         "英文通用": {
             "provider": "openai",
