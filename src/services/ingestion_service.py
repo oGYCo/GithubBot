@@ -392,17 +392,51 @@ class IngestionService:
                     logger.warning(f"⚠️ [空批次] 会话ID: {session_id} - 批次中没有有效文档")
                     continue
                 
+                # 调试：检查 cleaned_texts 的内容
+                logger.info(f"🔍 [向量化前调试] 会话ID: {session_id} - cleaned_texts 类型: {type(cleaned_texts)}, 长度: {len(cleaned_texts)}")
+                for idx, text in enumerate(cleaned_texts[:3]):  # 只显示前3个
+                    logger.info(f"🔍 [文本调试] 会话ID: {session_id} - 索引 {idx}: 类型={type(text)}, 长度={len(text) if hasattr(text, '__len__') else 'N/A'}, 内容预览={repr(text[:100])}")
+                
+                # 最终验证：确保所有元素都是字符串
+                final_texts = []
+                for idx, text in enumerate(cleaned_texts):
+                    if not isinstance(text, str):
+                        logger.error(f"❌ [类型错误] 会话ID: {session_id} - 索引 {idx} 不是字符串: {type(text)} = {repr(text)}")
+                        text = str(text)
+                    
+                    # 确保不是空字符串
+                    if not text.strip():
+                        logger.warning(f"⚠️ [空字符串] 会话ID: {session_id} - 索引 {idx} 是空字符串，跳过")
+                        continue
+                    
+                    final_texts.append(text)
+                
+                if not final_texts:
+                    logger.error(f"❌ [无有效文本] 会话ID: {session_id} - 最终验证后没有有效文本")
+                    continue
+                
+                logger.info(f"✅ [验证完成] 会话ID: {session_id} - 最终文本数量: {len(final_texts)}")
+                
                 # 向量化文本
                 start_time = time.time()
                 logger.debug(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
-                embeddings = embedding_model.embed_documents(cleaned_texts)
+                embeddings = embedding_model.embed_documents(final_texts)
                 embedding_time = time.time() - start_time
                 logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
 
+                # 创建对应的文档列表（只包含有效的文档）
+                valid_docs = []
+                valid_idx = 0
+                for idx, text in enumerate(cleaned_texts):
+                    if isinstance(text, str) and text.strip():
+                        if valid_idx < len(final_texts):
+                            valid_docs.append(batch_docs[idx])
+                            valid_idx += 1
+                
                 # 存储到向量数据库
                 logger.debug(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
                 success = get_vector_store().add_documents_to_collection(
-                    session_id, batch_docs, embeddings, len(batch_docs)
+                    session_id, valid_docs, embeddings, len(valid_docs)
                 )
 
                 if not success:
