@@ -239,8 +239,52 @@ class VectorStore:
                     metadatas=metadatas
                 )
 
+                # 获取并记录当前集合的统计信息
+                try:
+                    collection_count = collection.count()
+                    logger.info(f"📊 [数据库状态] 集合: {collection_name} - 当前总文档数: {collection_count}")
+                    
+                    # 获取最近添加的几个文档进行验证
+                    recent_docs = collection.get(
+                        ids=ids[:min(3, len(ids))],  # 获取刚添加的前3个文档
+                        include=["documents", "metadatas"]
+                    )
+                    
+                    logger.info(f"🔍 [验证数据] 集合: {collection_name} - 刚添加的文档验证:")
+                    for idx, (doc_id, doc_content, doc_metadata) in enumerate(zip(
+                        recent_docs['ids'], 
+                        recent_docs['documents'], 
+                        recent_docs['metadatas']
+                    )):
+                        file_path = doc_metadata.get('file_path', 'unknown')
+                        content_length = len(doc_content) if doc_content else 0
+                        logger.info(f"  📄 文档 {idx+1}: ID={doc_id}, 文件={file_path}, 内容长度={content_length}")
+                        
+                except Exception as verify_error:
+                    logger.warning(f"⚠️ [验证失败] 集合: {collection_name} - 无法验证刚添加的数据: {str(verify_error)}")
+
                 logger.info(f"✅ [批次完成] 集合: {collection_name} - 第 {batch_num}/{total_batches} 批次存储成功 ({actual_batch_size} 个文档)")
 
+            # 最终统计信息
+            try:
+                final_count = collection.count()
+                logger.info(f"📈 [最终统计] 集合: {collection_name} - 存储完成后总文档数: {final_count}")
+                
+                # 获取集合中的一些样本数据进行最终验证
+                sample_data = collection.peek(limit=5)
+                logger.info(f"🔍 [样本数据] 集合: {collection_name} - 集合中的样本文档:")
+                for idx, (doc_id, doc_content, doc_metadata) in enumerate(zip(
+                    sample_data['ids'], 
+                    sample_data['documents'], 
+                    sample_data['metadatas']
+                )):
+                    file_path = doc_metadata.get('file_path', 'unknown') if doc_metadata else 'unknown'
+                    content_length = len(doc_content) if doc_content else 0
+                    logger.info(f"  📄 样本 {idx+1}: ID={doc_id}, 文件={file_path}, 内容长度={content_length}")
+                    
+            except Exception as final_error:
+                logger.warning(f"⚠️ [最终统计失败] 集合: {collection_name} - 无法获取最终统计信息: {str(final_error)}")
+            
             logger.info(f"🎉 [存储完成] 集合: {collection_name} - 成功存储 {total_docs} 个文档到向量数据库")
             return True
 
