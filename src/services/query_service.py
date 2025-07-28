@@ -55,7 +55,7 @@ class QueryService:
                 )
 
             logger.info(f"🚀 [查询开始] 会话ID: {request.session_id} - 问题: {request.question[:100]}{'...' if len(request.question) > 100 else ''}")
-            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode.value}")
+            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode}")
             
             # 执行混合检索
             logger.info(f"🔍 [检索阶段] 会话ID: {request.session_id} - 开始执行混合检索")
