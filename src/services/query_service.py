@@ -474,7 +474,7 @@ class QueryService:
             # 创建 LLM 配置对象
             logger.debug(f"⚙️ [LLM配置] 提供商: {llm_config.provider}, 模型: {llm_config.model_name}, 温度: {llm_config.temperature}, 最大令牌: {llm_config.max_tokens}")
             llm_cfg = LLMConfig(
-                provider=llm_config.provider,
+                provider=llm_config.provider.value if hasattr(llm_config.provider, 'value') else llm_config.provider,
                 model_name=llm_config.model_name,
                 api_key=llm_config.api_key,
                 api_base=llm_config.api_base,
