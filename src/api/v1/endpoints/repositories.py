@@ -142,7 +142,7 @@ async def query(req: QueryRequest):
     """
     logger.info(f"🔍 [查询请求] 收到查询请求 - 目标会话: {req.session_id}")
     logger.info(f"❓ [查询内容] 问题: {req.question[:100]}{'...' if len(req.question) > 100 else ''}")
-    logger.info(f"⚙️ [查询配置] 生成模式: {req.generation_mode.value}")
+    logger.info(f"⚙️ [查询配置] 生成模式: {req.generation_mode}")
     
     if req.llm_config:
         logger.info(f"🤖 [LLM配置] 提供商: {req.llm_config.provider}, 模型: {req.llm_config.model_name}")
