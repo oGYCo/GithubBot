@@ -96,7 +96,7 @@ def test_vector_store_flow():
         python_files = []
         
         for file_path in repo_path.rglob("*.py"):
-            if file_parser.should_process_file(file_path):
+            if file_parser.should_process_file(file_path, repo_path):
                 python_files.append(file_path)
                 if len(python_files) >= 3:  # 只测试前3个文件
                     break
