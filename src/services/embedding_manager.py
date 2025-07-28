@@ -49,6 +49,10 @@ class EmbeddingConfig:
 
         if self.provider == "ollama" and not self.api_base:
             self.api_base = "http://localhost:11434"
+            
+        # 根据提供商调整批次大小限制
+        if self.provider == "qwen" and self.batch_size > 10:
+            self.batch_size = 10  # Qwen API 批次大小限制为 10
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'EmbeddingConfig':
