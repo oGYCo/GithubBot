@@ -77,7 +77,7 @@ class AnalysisSession(Base):
             "repository_url": self.repository_url,
             "repository_name": self.repository_name,
             "repository_owner": self.repository_owner,
-            "status": self.status.value,
+            "status": self.status.value if hasattr(self.status, 'value') else self.status,
             "error_message": self.error_message,
             "total_files": self.total_files,
             "processed_files": self.processed_files,

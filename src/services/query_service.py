@@ -76,7 +76,7 @@ class QueryService:
             )
 
             # 根据生成模式处理
-            if request.generation_mode == GenerationMode.SERVICE and request.llm_config:
+            if request.generation_mode == "service" and request.llm_config:
                 # 服务端生成答案
                 logger.info(f"🤖 [生成阶段] 会话ID: {request.session_id} - 开始使用LLM生成答案")
                 generation_start = time.time()
