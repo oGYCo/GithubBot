@@ -413,7 +413,7 @@ class EmbeddingManager:
             params = {
                 "model": config.model_name,
                 "api_key": api_key,
-                "base_url": config.api_base or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "show_progress_bar": True,
                 "max_retries": config.max_retries,
                 "timeout": config.timeout,
@@ -752,7 +752,7 @@ def get_provider_info(provider: str) -> Dict[str, Any]:
     default_endpoints = {
         'openai': 'https://api.openai.com/v1',
         'deepseek': 'https://api.deepseek.com/v1',
-        'qwen': 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        'qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         'zhipu': 'https://open.bigmodel.cn/api/paas/v4',
         'baichuan': 'https://api.baichuan-ai.com/v1',
         'jina': 'https://api.jina.ai/v1',
