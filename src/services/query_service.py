@@ -46,6 +46,22 @@ class QueryService:
         db = get_db_session()
 
         try:
+            # 添加详细的调试日志
+            logger.info(f"🔍 [DEBUG] QueryRequest 对象类型和内容:")
+            logger.info(f"🔍 [DEBUG] - session_id: {request.session_id} (type: {type(request.session_id)})")
+            logger.info(f"🔍 [DEBUG] - question: {request.question[:50]}... (type: {type(request.question)})")
+            logger.info(f"🔍 [DEBUG] - generation_mode: {request.generation_mode} (type: {type(request.generation_mode)})")
+            logger.info(f"🔍 [DEBUG] - llm_config: {request.llm_config} (type: {type(request.llm_config)})")
+            
+            if request.llm_config:
+                logger.info(f"🔍 [DEBUG] LLMConfig 详细信息:")
+                logger.info(f"🔍 [DEBUG] - provider: {request.llm_config.provider} (type: {type(request.llm_config.provider)})")
+                logger.info(f"🔍 [DEBUG] - model_name: {request.llm_config.model_name} (type: {type(request.llm_config.model_name)})")
+                if hasattr(request.llm_config.provider, 'value'):
+                    logger.info(f"🔍 [DEBUG] - provider.value: {request.llm_config.provider.value}")
+                else:
+                    logger.info(f"🔍 [DEBUG] - provider 没有 .value 属性")
+            
             # 验证会话
             session = self._validate_session(db, request.session_id)
             if not session:
@@ -473,8 +489,15 @@ class QueryService:
             
             # 创建 LLM 配置对象
             logger.debug(f"⚙️ [LLM配置] 提供商: {llm_config.provider}, 模型: {llm_config.model_name}, 温度: {llm_config.temperature}, 最大令牌: {llm_config.max_tokens}")
+            logger.info(f"🔍 [DEBUG] _generate_answer 中的 llm_config:")
+            logger.info(f"🔍 [DEBUG] - llm_config.provider: {llm_config.provider} (type: {type(llm_config.provider)})")
+            logger.info(f"🔍 [DEBUG] - hasattr(llm_config.provider, 'value'): {hasattr(llm_config.provider, 'value')}")
+            
+            provider_value = llm_config.provider.value if hasattr(llm_config.provider, 'value') else llm_config.provider
+            logger.info(f"🔍 [DEBUG] - 最终使用的 provider 值: {provider_value} (type: {type(provider_value)})")
+            
             llm_cfg = LLMConfig(
-                provider=llm_config.provider.value if hasattr(llm_config.provider, 'value') else llm_config.provider,
+                provider=provider_value,
                 model_name=llm_config.model_name,
                 api_key=llm_config.api_key,
                 api_base=llm_config.api_base,
