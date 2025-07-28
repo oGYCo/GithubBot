@@ -145,3 +145,16 @@ curl -X POST "http://localhost:8000/api/v1/repos/analyze" \
   }'
 
 curl "http://localhost:8000/api/v1/repos/status/bb36ec10-6ee8-4a43-92aa-3b61cffb2bf5"
+
+curl -X POST "http://localhost:8000/api/v1/repos/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "b7985d65-4787-4eb9-a1be-6e4c829715b5",
+    "question": "这个项目使用了哪些技术栈？",
+    "generation_mode": "service",
+    "llm_config": {
+      "provider": "qwen",
+      "model_name": "qwen-plus",
+      "api_key": "sk-8bac0158a9ee415ba246ccb2b120f733"
+    }
+  }'

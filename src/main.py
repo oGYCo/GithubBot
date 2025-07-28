@@ -88,8 +88,9 @@ async def health_check():
     
     # 数据库连接检查
     try:
+        from sqlalchemy import text
         db = get_db_session()
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         db.close()
         health_status["checks"]["database"] = "healthy"
     except Exception as e:
