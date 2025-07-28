@@ -294,6 +294,45 @@ class IngestionService:
 
         return processed_files, total_chunks, all_documents
 
+    def _debug_document_content(self, documents: List[Document], session_id: str, max_docs: int = 5) -> None:
+        """
+        调试方法：显示处理后的文档内容
+        
+        Args:
+            documents: 文档列表
+            session_id: 会话ID
+            max_docs: 最多显示的文档数量
+        """
+        logger.info(f"📋 [文档内容调试] 会话ID: {session_id} - 总文档数: {len(documents)}")
+        
+        for i, doc in enumerate(documents[:max_docs]):
+            content = doc.page_content
+            metadata = doc.metadata
+            
+            logger.info(f"📄 [文档 {i+1}] 会话ID: {session_id}")
+            logger.info(f"   📊 元数据: {metadata}")
+            logger.info(f"   📝 内容长度: {len(content)} 字符")
+            logger.info(f"   🔤 内容类型: {type(content)}")
+            logger.info(f"   📖 内容预览 (前200字符): {repr(content[:200])}")
+            
+            # 检查是否包含特殊字符
+            import re
+            control_chars = re.findall(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', content)
+            if control_chars:
+                logger.warning(f"   ⚠️ 发现控制字符: {len(control_chars)} 个")
+            
+            # 检查编码
+            try:
+                content.encode('utf-8')
+                logger.info(f"   ✅ UTF-8 编码: 正常")
+            except UnicodeEncodeError as e:
+                logger.warning(f"   ❌ UTF-8 编码: 异常 - {str(e)}")
+            
+            logger.info("   " + "-" * 50)
+        
+        if len(documents) > max_docs:
+            logger.info(f"   ... 还有 {len(documents) - max_docs} 个文档未显示")
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10)
@@ -321,6 +360,9 @@ class IngestionService:
         total_docs = len(documents)
         total_batches = (total_docs + batch_size - 1) // batch_size
 
+        # 调试：显示处理后的文档内容
+        #self._debug_document_content(documents, session_id, max_docs=30)
+        
         logger.info(f"🔄 [向量化开始] 会话ID: {session_id} - 开始向量化 {total_docs} 个文档块，批次大小: {batch_size}")
         logger.info(f"📊 [批次信息] 会话ID: {session_id} - 总共需要处理 {total_batches} 个批次")
 
