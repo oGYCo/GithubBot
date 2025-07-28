@@ -212,7 +212,9 @@ class VectorStore:
                     cleaned_metadata = {}
                     for key, value in metadata.items():
                         if value is None:
-                            cleaned_metadata[key] = None
+                            # ChromaDB 不支持 None 值，转换为空字符串
+                            logger.info(f"🔧 [None值处理] 字段 {key}: None -> 空字符串")
+                            cleaned_metadata[key] = ""
                         elif isinstance(value, (str, int, float, bool)):
                             cleaned_metadata[key] = value
                         else:
