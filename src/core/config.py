@@ -172,7 +172,7 @@ class Settings(BaseSettings):
         return [str(v).strip()] if v else []
 
     #---混合检索返回的文件个数---
-    FINAL_CONTEXT_TOP_K: int = 5
+    FINAL_CONTEXT_TOP_K: int = 10
 
     # --- 向量检索和 BM25 检索返回的文档数量 ---
     VECTOR_SEARCH_TOP_K: int = 10

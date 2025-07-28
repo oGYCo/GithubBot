@@ -150,7 +150,7 @@ curl -X POST "http://localhost:8000/api/v1/repos/query" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "b7985d65-4787-4eb9-a1be-6e4c829715b5",
-    "question": "这个项目使用了哪些技术栈？",
+    "question": "讲解一下llm_manager.py这个代码文件",
     "generation_mode": "service",
     "llm_config": {
       "provider": "qwen",
@@ -158,3 +158,15 @@ curl -X POST "http://localhost:8000/api/v1/repos/query" \
       "api_key": "sk-8bac0158a9ee415ba246ccb2b120f733"
     }
   }'
+
+  curl -X 'GET' \
+  'http://localhost:8000/api/v1/repos/query/status/b7985d65-4787-4eb9-a1be-6e4c829715b5' \
+  -H 'accept: application/json'
+
+  curl -X 'GET' \
+  'http://localhost:8000/api/v1/repos/query/result/05c3c929-3461-4d19-aa90-0b3519899f71' \
+  -H 'accept: application/json' | jq -r '.answer'
+
+curl -X 'GET' \
+  'http://localhost:8000/api/v1/repos/query/result/05c3c929-3461-4d19-aa90-0b3519899f71' \
+  -H 'accept: application/json' | grep -o '"answer":"[^"]*"' | sed 's/"answer":"//' | sed 's/"$//'

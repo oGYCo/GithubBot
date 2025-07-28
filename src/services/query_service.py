@@ -273,6 +273,101 @@ class QueryService:
             logger.error(f"❌ [向量检索失败] 会话ID: {session_id} - {str(e)}")
             return []
 
+    def _improved_tokenize(self, text: str) -> List[str]:
+        """
+        改进的分词方法，能更好地处理文件名和中英文混合内容
+        
+        Args:
+            text: 待分词的文本
+            
+        Returns:
+            List[str]: 分词结果
+        """
+        import re
+        
+        # 转换为小写
+        text = text.lower()
+        
+        # 提取文件名（包含扩展名的完整文件名）
+        file_pattern = r'[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+'
+        file_matches = re.findall(file_pattern, text)
+        
+        # 提取路径分隔符分割的部分
+        path_pattern = r'[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*'
+        path_matches = re.findall(path_pattern, text)
+        
+        # 基本分词（空格、标点符号分割）
+        basic_tokens = re.findall(r'[a-zA-Z0-9_-]+|[\u4e00-\u9fff]+', text)
+        
+        # 合并所有token
+        all_tokens = set()
+        all_tokens.update(basic_tokens)
+        all_tokens.update(file_matches)
+        
+        # 为文件名添加不带扩展名的版本
+        for file_match in file_matches:
+            name_without_ext = file_match.split('.')[0]
+            all_tokens.add(name_without_ext)
+            
+        # 过滤空字符串和单字符
+        tokens = [token for token in all_tokens if len(token) > 1]
+        
+        return tokens
+
+    def _calculate_file_name_bonus(self, query_tokens: List[str], documents: List[Dict], doc_scores: List[float]) -> List[float]:
+        """
+        计算文件名匹配的额外加分
+        
+        Args:
+            query_tokens: 查询词列表
+            documents: 文档列表
+            doc_scores: 原始BM25分数
+            
+        Returns:
+            List[float]: 每个文档的加分
+        """
+        import re
+        
+        # 从查询中提取可能的文件名
+        file_name_patterns = []
+        for token in query_tokens:
+            # 检查是否是文件名格式
+            if '.' in token and re.match(r'^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$', token):
+                file_name_patterns.append(token)
+                # 同时添加不带扩展名的版本
+                name_without_ext = token.split('.')[0]
+                file_name_patterns.append(name_without_ext)
+        
+        bonus_scores = [0.0] * len(documents)
+        
+        if not file_name_patterns:
+            return bonus_scores
+            
+        # 为每个文档计算文件名匹配加分
+        for i, doc in enumerate(documents):
+            file_path = doc["metadata"].get("file_path", "")
+            if not file_path:
+                continue
+                
+            # 提取文件名
+            file_name = file_path.split('/')[-1].split('\\')[-1].lower()
+            
+            # 检查文件名匹配
+            for pattern in file_name_patterns:
+                if pattern.lower() in file_name:
+                    # 精确匹配给更高分数
+                    if pattern.lower() == file_name or pattern.lower() == file_name.split('.')[0]:
+                        bonus_scores[i] += 10.0  # 精确匹配高分
+                    else:
+                        bonus_scores[i] += 5.0   # 部分匹配中等分
+                        
+            # 检查路径匹配
+            for pattern in file_name_patterns:
+                if pattern.lower() in file_path.lower():
+                    bonus_scores[i] += 2.0   # 路径匹配低分
+                    
+        return bonus_scores
+
     def _bm25_search(
             self,
             session_id: str,
@@ -297,8 +392,8 @@ class QueryService:
                 logger.warning(f"⚠️ [索引缺失] 会话ID: {session_id} - BM25索引不存在")
                 return []
 
-            # 分词（简单空格分割）
-            query_tokens = question.lower().split()
+            # 改进的分词逻辑
+            query_tokens = self._improved_tokenize(question)
             logger.debug(f"📝 [分词结果] 会话ID: {session_id} - 查询词: {query_tokens}")
 
             # BM25 搜索
@@ -308,6 +403,15 @@ class QueryService:
             # 获取文档信息
             documents = self._documents_cache.get(session_id, [])
             logger.debug(f"📚 [文档缓存] 会话ID: {session_id} - 缓存中有 {len(documents)} 个文档")
+
+            # 检查是否包含文件名查询，给予额外加分
+            file_name_bonus = self._calculate_file_name_bonus(query_tokens, documents, doc_scores)
+            
+            # 应用文件名加分
+            for i, bonus in enumerate(file_name_bonus):
+                if bonus > 0:
+                    doc_scores[i] += bonus
+                    logger.debug(f"📁 [文件名加分] 文档{i}: +{bonus:.4f}")
 
             # 排序并取前 N 个
             scored_docs = [
@@ -351,12 +455,16 @@ class QueryService:
             if not documents:
                 return None
 
-            # 准备文档文本
+            # 准备文档文本（改进的分词）
             doc_texts = []
             for doc in documents:
                 # 使用元数据中的内容
                 content = doc["metadata"].get("content", doc["content"])
-                doc_texts.append(content.lower().split())
+                # 提取文件路径信息
+                file_path = doc["metadata"].get("file_path", "")
+                # 组合内容和文件路径进行分词
+                combined_content = f"{content} {file_path}"
+                doc_texts.append(self._improved_tokenize(combined_content))
 
             # 构建 BM25 索引
             bm25_index = BM25Okapi(doc_texts)
