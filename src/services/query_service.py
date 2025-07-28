@@ -222,15 +222,12 @@ class QueryService:
             logger.info(f"🔍 [向量检索] 会话ID: {session_id} - 开始向量检索，问题长度: {len(question)} 字符")
             
             # 创建 embedding 配置对象
-            embedding_cfg = EmbeddingConfig(
-                provider=embedding_config["provider"],
-                model_name=embedding_config["model_name"],
-                api_key=embedding_config.get("api_key"),
-                api_base=embedding_config.get("api_base"),
-                api_version=embedding_config.get("api_version"),
-                deployment_name=embedding_config.get("deployment_name"),
-                extra_params=embedding_config.get("extra_params", {})
-            )
+            # 确保 extra_params 不为 None
+            embedding_config_copy = embedding_config.copy()
+            if embedding_config_copy.get("extra_params") is None:
+                embedding_config_copy["extra_params"] = {}
+            
+            embedding_cfg = EmbeddingConfig.from_dict(embedding_config_copy)
             logger.debug(f"🤖 [模型配置] 会话ID: {session_id} - 使用 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
 
             # 加载 embedding 模型

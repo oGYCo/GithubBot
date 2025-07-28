@@ -418,6 +418,9 @@ class EmbeddingManager:
             if not api_key:
                 raise EmbeddingError("通义千问模型需要 API Key，请在请求中提供 api_key 或在 .env 文件中设置 QWEN_API_KEY 或 DASHSCOPE_API_KEY")
             
+            # 确保 extra_params 不为 None
+            extra_params = config.extra_params or {}
+            
             params = {
                 "model": config.model_name,
                 "api_key": api_key,
@@ -427,7 +430,7 @@ class EmbeddingManager:
                 "timeout": config.timeout,
                 "tiktoken_enabled": False,  # 对于非 OpenAI 实现禁用 tiktoken
                 "check_embedding_ctx_length": False,
-                **config.extra_params
+                **extra_params
             }
 
             return OpenAIEmbeddings(**params)
