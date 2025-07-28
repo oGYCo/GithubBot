@@ -418,10 +418,11 @@ class EmbeddingManager:
                 "model": config.model_name,
                 "api_key": api_key,
                 "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "show_progress_bar": True,
+                "show_progress_bar": False,  # 禁用进度条避免额外依赖
                 "max_retries": config.max_retries,
                 "timeout": config.timeout,
                 "tiktoken_enabled": False,  # 对于非 OpenAI 实现禁用 tiktoken
+                "check_embedding_ctx_length": False,
                 **config.extra_params
             }
 
