@@ -589,7 +589,7 @@ class QueryService:
                 question=request.question,
                 answer=response.answer,
                 retrieved_chunks_count=len(retrieved_chunks),
-                generation_mode=request.generation_mode.value,
+                generation_mode=request.generation_mode,
                 llm_config=request.llm_config.model_dump() if request.llm_config else None,
                 retrieval_time=response.retrieval_time,
                 generation_time=response.generation_time,
