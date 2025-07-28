@@ -116,12 +116,28 @@ def test_with_langchain_openai():
         os.environ["OPENAI_API_KEY"] = api_key
         os.environ["OPENAI_API_BASE"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         
-        embeddings = OpenAIEmbeddings(
-            model="text-embedding-v4",
-            api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            tiktoken_enabled=False
-        )
+        # 尝试不同的配置方式
+        try:
+            embeddings = OpenAIEmbeddings(
+                model="text-embedding-v4",
+                api_key=api_key,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                tiktoken_enabled=False,
+                show_progress_bar=False,
+                check_embedding_ctx_length=False
+            )
+        except Exception as e1:
+            print(f"⚠️ 第一次尝试失败: {str(e1)}")
+            print(f"🔄 尝试使用标准OpenAI模型名称...")
+            # 尝试使用更标准的模型名称
+            embeddings = OpenAIEmbeddings(
+                model="text-embedding-ada-002",  # 使用标准OpenAI模型名称
+                api_key=api_key,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                tiktoken_enabled=False,
+                show_progress_bar=False,
+                check_embedding_ctx_length=False
+            )
         
         test_texts = [
             "这是一个测试文本",
