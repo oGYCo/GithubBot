@@ -401,8 +401,8 @@ class EmbeddingManager:
             raise EmbeddingError(f"创建 DeepSeek 模型失败: {str(e)}") from e
 
     @staticmethod
-    def _create_qwen_embeddings(config: EmbeddingConfig) -> DashScopeEmbeddings:
-        """创建 通义千问 Embeddings 实例（使用 DashScope 原生接口）"""
+    def _create_qwen_embeddings(config: EmbeddingConfig) -> OpenAIEmbeddings:
+        """创建 通义千问 Embeddings 实例（使用 OpenAI 兼容接口）"""
         try:
             # API Key 优先级：配置中的 api_key > 环境变量 QWEN_API_KEY > 环境变量 DASHSCOPE_API_KEY
             api_key = config.api_key or settings.QWEN_API_KEY or settings.DASHSCOPE_API_KEY
@@ -412,11 +412,15 @@ class EmbeddingManager:
             
             params = {
                 "model": config.model_name,
-                "dashscope_api_key": api_key,
+                "api_key": api_key,
+                "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "show_progress_bar": True,
+                "max_retries": config.max_retries,
+                "timeout": config.timeout,
                 **config.extra_params
             }
 
-            return DashScopeEmbeddings(**params)
+            return OpenAIEmbeddings(**params)
         except Exception as e:
             raise EmbeddingError(f"创建 通义千问 模型失败: {str(e)}") from e
 
