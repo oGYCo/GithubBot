@@ -335,17 +335,49 @@ class IngestionService:
                 
                 # 检查和清理文本内容
                 cleaned_texts = []
+                logger.info(f"🔍 [批次调试] 会话ID: {session_id} - 原始batch_texts类型: {type(batch_texts)}, 长度: {len(batch_texts)}")
+                
                 for idx, text in enumerate(batch_texts):
+                    # 详细调试信息
+                    logger.info(f"🔍 [文档调试] 会话ID: {session_id} - 文档 {i+idx}: type={type(text)}, 长度={len(text) if hasattr(text, '__len__') else 'N/A'}, 前100字符={repr(text)[:100]}")
+                    
                     if not isinstance(text, str):
                         logger.warning(f"🔧 [文本格式] 会话ID: {session_id} - 文档 {i+idx} 的内容不是字符串类型: {type(text)}")
                         text = str(text) if text is not None else ""
                     
                     # 确保文本不为空且是有效字符串
                     if not text or not text.strip():
-                        logger.warning(f"🔧 [空文本] 会话ID: {session_id} - 文档 {i+idx} 内容为空，跳过")
-                        text = "[空文档]"
+                        logger.warning(f"🔧 [空文本] 会话ID: {session_id} - 文档 {i+idx} 内容为空，跳过此文档")
+                        continue  # 跳过空文档，不添加到cleaned_texts中
                     
-                    cleaned_texts.append(text.strip())
+                    # 进一步清理文本：移除控制字符，确保UTF-8编码
+                    try:
+                        # 移除控制字符（除了换行符、制表符和回车符）
+                        import re
+                        cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)
+                        # 确保文本是有效的UTF-8
+                        cleaned_text = cleaned_text.encode('utf-8', errors='ignore').decode('utf-8')
+                        # 移除多余的空白字符
+                        cleaned_text = ' '.join(cleaned_text.split())
+                        
+                        if cleaned_text.strip():
+                            cleaned_texts.append(cleaned_text.strip())
+                        else:
+                            logger.warning(f"🔧 [清理后空文本] 会话ID: {session_id} - 文档 {i+idx} 清理后为空，跳过")
+                    except Exception as e:
+                        logger.error(f"💥 [文本清理失败] 会话ID: {session_id} - 文档 {i+idx}: {str(e)}")
+                        # 如果清理失败，使用原始文本的简单清理版本
+                        simple_cleaned = text.strip()
+                        if simple_cleaned:
+                            cleaned_texts.append(simple_cleaned)
+                
+                # 检查是否有有效文本
+                if not cleaned_texts:
+                    logger.warning(f"⚠️ [批次无效] 会话ID: {session_id} - 批次 {batch_num} 清理后无有效文本，跳过")
+                    continue
+                
+                # 额外验证清理后的文本
+                logger.info(f"🔍 [清理后验证] 会话ID: {session_id} - 批次大小: {len(cleaned_texts)}, 类型: {type(cleaned_texts)}, 样例: {cleaned_texts[0][:50] if cleaned_texts else '无内容'}...")
                 
                 logger.debug(f"🔧 [文本检查] 会话ID: {session_id} - 批次文本样例: {cleaned_texts[0][:100] if cleaned_texts else '无内容'}...")
                 

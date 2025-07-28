@@ -417,6 +417,7 @@ class EmbeddingManager:
                 "show_progress_bar": True,
                 "max_retries": config.max_retries,
                 "timeout": config.timeout,
+                "skip_empty": True,  # 跳过空字符串，避免API错误
                 **config.extra_params
             }
 
