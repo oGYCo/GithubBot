@@ -195,8 +195,9 @@ class VectorStore:
 
                 logger.debug(f"🔄 [批次准备] 集合: {collection_name} - 准备第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
 
-                # 准备批次数据
+                # 准备批次数据 - 修复ID重复问题
                 ids = [f"chunk_{collection_name}_{i + j}" for j in range(len(batch_docs))]
+                logger.info(f"🔢 [ID生成] 集合: {collection_name} - 批次 {batch_num} ID范围: {ids[0]} 到 {ids[-1]}")
                 documents_content = [doc.page_content for doc in batch_docs]
                 metadatas = []
 
