@@ -61,16 +61,8 @@ class IngestionService:
             # 创建 embedding 配置对象
             logger.info(f"⚙️ [配置加载] 会话ID: {session_id} - 创建Embedding配置")
             logger.info(f"🔍 [调试] 会话ID: {session_id} - 接收到的embedding_config: {embedding_config}")
-            embedding_cfg = EmbeddingConfig(
-                provider=embedding_config["provider"],
-                model_name=embedding_config["model_name"],
-                api_key=embedding_config.get("api_key"),
-                api_base=embedding_config.get("api_base"),
-                api_version=embedding_config.get("api_version"),
-                deployment_name=embedding_config.get("deployment_name"),
-                extra_params=embedding_config.get("extra_params") or {}
-            )
-            logger.info(f"🔍 [调试] 会话ID: {session_id} - 创建的embedding_cfg: provider={embedding_cfg.provider}, model={embedding_cfg.model_name}, api_key={'***' if embedding_cfg.api_key else 'None'}")
+            embedding_cfg = EmbeddingConfig.from_dict(embedding_config)
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - 创建的embedding_cfg: provider={embedding_cfg.provider}, model={embedding_cfg.model_name}, batch_size={embedding_cfg.batch_size}, api_key={'***' if embedding_cfg.api_key else 'None'}")
             self._update_task_progress(task_instance, 10, "配置加载完成")
 
             # 加载 embedding 模型
@@ -127,7 +119,7 @@ class IngestionService:
             # 向量化和存储文档
             if all_documents:
                 logger.info(f"🔄 [向量化] 会话ID: {session_id} - 开始向量化 {len(all_documents)} 个文档块")
-                self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model, task_instance)
+                self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model, task_instance, embedding_cfg.batch_size)
                 logger.info(f"✅ [向量化完成] 会话ID: {session_id} - 所有文档向量化并存储完成")
             else:
                 logger.warning(f"⚠️ [无文档] 会话ID: {session_id} - 仓库没有生成任何文档块")
@@ -322,7 +314,8 @@ class IngestionService:
             embedding_model: Embedding 模型
             batch_size: 批处理大小
         """
-        batch_size = batch_size or settings.EMBEDDING_BATCH_SIZE
+        if batch_size is None:
+            batch_size = settings.EMBEDDING_BATCH_SIZE
         total_docs = len(documents)
         total_batches = (total_docs + batch_size - 1) // batch_size
 
