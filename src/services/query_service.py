@@ -31,6 +31,22 @@ class QueryService:
     def __init__(self):
         self._bm25_cache = {}  # 缓存 BM25 索引
         self._documents_cache = {}  # 缓存文档内容
+    
+    def clear_cache(self, session_id: str = None):
+        """
+        清除BM25缓存
+        
+        Args:
+            session_id: 指定会话ID，如果为None则清除所有缓存
+        """
+        if session_id:
+            self._bm25_cache.pop(session_id, None)
+            self._documents_cache.pop(session_id, None)
+            logger.info(f"🧹 [缓存清除] 已清除会话 {session_id} 的BM25缓存")
+        else:
+            self._bm25_cache.clear()
+            self._documents_cache.clear()
+            logger.info(f"🧹 [缓存清除] 已清除所有BM25缓存")
 
     def query(self, request: QueryRequest) -> QueryResponse:
         """
