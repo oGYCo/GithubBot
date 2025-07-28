@@ -31,6 +31,22 @@ class QueryService:
     def __init__(self):
         self._bm25_cache = {}  # 缓存 BM25 索引
         self._documents_cache = {}  # 缓存文档内容
+    
+    def clear_cache(self, session_id: str = None):
+        """
+        清除BM25缓存
+        
+        Args:
+            session_id: 指定会话ID，如果为None则清除所有缓存
+        """
+        if session_id:
+            self._bm25_cache.pop(session_id, None)
+            self._documents_cache.pop(session_id, None)
+            logger.info(f"🧹 [缓存清除] 已清除会话 {session_id} 的BM25缓存")
+        else:
+            self._bm25_cache.clear()
+            self._documents_cache.clear()
+            logger.info(f"🧹 [缓存清除] 已清除所有BM25缓存")
 
     def query(self, request: QueryRequest) -> QueryResponse:
         """
@@ -46,6 +62,22 @@ class QueryService:
         db = get_db_session()
 
         try:
+            # 添加详细的调试日志
+            logger.info(f"🔍 [DEBUG] QueryRequest 对象类型和内容:")
+            logger.info(f"🔍 [DEBUG] - session_id: {request.session_id} (type: {type(request.session_id)})")
+            logger.info(f"🔍 [DEBUG] - question: {request.question[:50]}... (type: {type(request.question)})")
+            logger.info(f"🔍 [DEBUG] - generation_mode: {request.generation_mode} (type: {type(request.generation_mode)})")
+            logger.info(f"🔍 [DEBUG] - llm_config: {request.llm_config} (type: {type(request.llm_config)})")
+            
+            if request.llm_config:
+                logger.info(f"🔍 [DEBUG] LLMConfig 详细信息:")
+                logger.info(f"🔍 [DEBUG] - provider: {request.llm_config.provider} (type: {type(request.llm_config.provider)})")
+                logger.info(f"🔍 [DEBUG] - model_name: {request.llm_config.model_name} (type: {type(request.llm_config.model_name)})")
+                if hasattr(request.llm_config.provider, 'value'):
+                    logger.info(f"🔍 [DEBUG] - provider.value: {request.llm_config.provider.value}")
+                else:
+                    logger.info(f"🔍 [DEBUG] - provider 没有 .value 属性")
+            
             # 验证会话
             session = self._validate_session(db, request.session_id)
             if not session:
@@ -55,7 +87,7 @@ class QueryService:
                 )
 
             logger.info(f"🚀 [查询开始] 会话ID: {request.session_id} - 问题: {request.question[:100]}{'...' if len(request.question) > 100 else ''}")
-            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode.value}")
+            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode}")
             
             # 执行混合检索
             logger.info(f"🔍 [检索阶段] 会话ID: {request.session_id} - 开始执行混合检索")
@@ -76,7 +108,7 @@ class QueryService:
             )
 
             # 根据生成模式处理
-            if request.generation_mode == GenerationMode.SERVICE and request.llm_config:
+            if request.generation_mode == "service" and request.llm_config:
                 # 服务端生成答案
                 logger.info(f"🤖 [生成阶段] 会话ID: {request.session_id} - 开始使用LLM生成答案")
                 generation_start = time.time()
@@ -206,15 +238,12 @@ class QueryService:
             logger.info(f"🔍 [向量检索] 会话ID: {session_id} - 开始向量检索，问题长度: {len(question)} 字符")
             
             # 创建 embedding 配置对象
-            embedding_cfg = EmbeddingConfig(
-                provider=embedding_config["provider"],
-                model_name=embedding_config["model_name"],
-                api_key=embedding_config.get("api_key"),
-                api_base=embedding_config.get("api_base"),
-                api_version=embedding_config.get("api_version"),
-                deployment_name=embedding_config.get("deployment_name"),
-                extra_params=embedding_config.get("extra_params", {})
-            )
+            # 确保 extra_params 不为 None
+            embedding_config_copy = embedding_config.copy()
+            if embedding_config_copy.get("extra_params") is None:
+                embedding_config_copy["extra_params"] = {}
+            
+            embedding_cfg = EmbeddingConfig.from_dict(embedding_config_copy)
             logger.debug(f"🤖 [模型配置] 会话ID: {session_id} - 使用 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
 
             # 加载 embedding 模型
@@ -260,6 +289,101 @@ class QueryService:
             logger.error(f"❌ [向量检索失败] 会话ID: {session_id} - {str(e)}")
             return []
 
+    def _improved_tokenize(self, text: str) -> List[str]:
+        """
+        改进的分词方法，能更好地处理文件名和中英文混合内容
+        
+        Args:
+            text: 待分词的文本
+            
+        Returns:
+            List[str]: 分词结果
+        """
+        import re
+        
+        # 转换为小写
+        text = text.lower()
+        
+        # 提取文件名（包含扩展名的完整文件名）
+        file_pattern = r'[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+'
+        file_matches = re.findall(file_pattern, text)
+        
+        # 提取路径分隔符分割的部分
+        path_pattern = r'[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9_-]+)*'
+        path_matches = re.findall(path_pattern, text)
+        
+        # 基本分词（空格、标点符号分割）
+        basic_tokens = re.findall(r'[a-zA-Z0-9_-]+|[\u4e00-\u9fff]+', text)
+        
+        # 合并所有token
+        all_tokens = set()
+        all_tokens.update(basic_tokens)
+        all_tokens.update(file_matches)
+        
+        # 为文件名添加不带扩展名的版本
+        for file_match in file_matches:
+            name_without_ext = file_match.split('.')[0]
+            all_tokens.add(name_without_ext)
+            
+        # 过滤空字符串和单字符
+        tokens = [token for token in all_tokens if len(token) > 1]
+        
+        return tokens
+
+    def _calculate_file_name_bonus(self, query_tokens: List[str], documents: List[Dict], doc_scores: List[float]) -> List[float]:
+        """
+        计算文件名匹配的额外加分
+        
+        Args:
+            query_tokens: 查询词列表
+            documents: 文档列表
+            doc_scores: 原始BM25分数
+            
+        Returns:
+            List[float]: 每个文档的加分
+        """
+        import re
+        
+        # 从查询中提取可能的文件名
+        file_name_patterns = []
+        for token in query_tokens:
+            # 检查是否是文件名格式
+            if '.' in token and re.match(r'^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$', token):
+                file_name_patterns.append(token)
+                # 同时添加不带扩展名的版本
+                name_without_ext = token.split('.')[0]
+                file_name_patterns.append(name_without_ext)
+        
+        bonus_scores = [0.0] * len(documents)
+        
+        if not file_name_patterns:
+            return bonus_scores
+            
+        # 为每个文档计算文件名匹配加分
+        for i, doc in enumerate(documents):
+            file_path = doc["metadata"].get("file_path", "")
+            if not file_path:
+                continue
+                
+            # 提取文件名
+            file_name = file_path.split('/')[-1].split('\\')[-1].lower()
+            
+            # 检查文件名匹配
+            for pattern in file_name_patterns:
+                if pattern.lower() in file_name:
+                    # 精确匹配给更高分数
+                    if pattern.lower() == file_name or pattern.lower() == file_name.split('.')[0]:
+                        bonus_scores[i] += 10.0  # 精确匹配高分
+                    else:
+                        bonus_scores[i] += 5.0   # 部分匹配中等分
+                        
+            # 检查路径匹配
+            for pattern in file_name_patterns:
+                if pattern.lower() in file_path.lower():
+                    bonus_scores[i] += 2.0   # 路径匹配低分
+                    
+        return bonus_scores
+
     def _bm25_search(
             self,
             session_id: str,
@@ -284,9 +408,23 @@ class QueryService:
                 logger.warning(f"⚠️ [索引缺失] 会话ID: {session_id} - BM25索引不存在")
                 return []
 
-            # 分词（简单空格分割）
-            query_tokens = question.lower().split()
-            logger.debug(f"📝 [分词结果] 会话ID: {session_id} - 查询词: {query_tokens}")
+            # 改进的分词逻辑
+            query_tokens = self._improved_tokenize(question)
+            logger.info(f"📝 [分词结果] 会话ID: {session_id} - 原始问题: '{question}', 分词结果: {query_tokens}")
+            
+            # 调试：检查文档分词情况
+            documents = self._documents_cache.get(session_id, [])
+            if documents and len(documents) > 0:
+                sample_doc = documents[0]
+                sample_content = sample_doc["metadata"].get("content", sample_doc["content"])
+                sample_file_path = sample_doc["metadata"].get("file_path", "")
+                sample_combined = f"{sample_content} {sample_file_path}"
+                sample_tokens = self._improved_tokenize(sample_combined)
+                logger.info(f"📄 [样本文档分词] 文件: {sample_file_path}, 分词结果前10个: {sample_tokens[:10]}")
+                
+                # 检查查询词是否在文档分词中
+                matching_tokens = [token for token in query_tokens if token in sample_tokens]
+                logger.info(f"🔍 [匹配检查] 查询词在样本文档中的匹配: {matching_tokens}")
 
             # BM25 搜索
             logger.debug(f"🔍 [BM25计算] 会话ID: {session_id} - 正在计算BM25分数...")
@@ -295,6 +433,15 @@ class QueryService:
             # 获取文档信息
             documents = self._documents_cache.get(session_id, [])
             logger.debug(f"📚 [文档缓存] 会话ID: {session_id} - 缓存中有 {len(documents)} 个文档")
+
+            # 检查是否包含文件名查询，给予额外加分
+            file_name_bonus = self._calculate_file_name_bonus(query_tokens, documents, doc_scores)
+            
+            # 应用文件名加分
+            for i, bonus in enumerate(file_name_bonus):
+                if bonus > 0:
+                    doc_scores[i] += bonus
+                    logger.debug(f"📁 [文件名加分] 文档{i}: +{bonus:.4f}")
 
             # 排序并取前 N 个
             scored_docs = [
@@ -338,12 +485,16 @@ class QueryService:
             if not documents:
                 return None
 
-            # 准备文档文本
+            # 准备文档文本（改进的分词）
             doc_texts = []
             for doc in documents:
                 # 使用元数据中的内容
                 content = doc["metadata"].get("content", doc["content"])
-                doc_texts.append(content.lower().split())
+                # 提取文件路径信息
+                file_path = doc["metadata"].get("file_path", "")
+                # 组合内容和文件路径进行分词
+                combined_content = f"{content} {file_path}"
+                doc_texts.append(self._improved_tokenize(combined_content))
 
             # 构建 BM25 索引
             bm25_index = BM25Okapi(doc_texts)
@@ -473,8 +624,19 @@ class QueryService:
             
             # 创建 LLM 配置对象
             logger.debug(f"⚙️ [LLM配置] 提供商: {llm_config.provider}, 模型: {llm_config.model_name}, 温度: {llm_config.temperature}, 最大令牌: {llm_config.max_tokens}")
+            logger.info(f"🔍 [DEBUG] _generate_answer 中的 llm_config:")
+            logger.info(f"🔍 [DEBUG] - llm_config.provider: {llm_config.provider} (type: {type(llm_config.provider)})")
+            logger.info(f"🔍 [DEBUG] - hasattr(llm_config.provider, 'value'): {hasattr(llm_config.provider, 'value')}")
+            
+            provider_value = llm_config.provider.value if hasattr(llm_config.provider, 'value') else llm_config.provider
+            logger.info(f"🔍 [DEBUG] - 最终使用的 provider 值: {provider_value} (type: {type(provider_value)})")
+            
+            # 处理 extra_params，确保它是一个字典
+            extra_params = llm_config.extra_params or {}
+            logger.info(f"🔍 [DEBUG] - extra_params: {extra_params} (type: {type(extra_params)})")
+            
             llm_cfg = LLMConfig(
-                provider=llm_config.provider,
+                provider=provider_value,
                 model_name=llm_config.model_name,
                 api_key=llm_config.api_key,
                 api_base=llm_config.api_base,
@@ -482,7 +644,7 @@ class QueryService:
                 deployment_name=llm_config.deployment_name,
                 temperature=llm_config.temperature,
                 max_tokens=llm_config.max_tokens,
-                **llm_config.extra_params
+                **extra_params
             )
 
             # 加载 LLM 模型
@@ -589,7 +751,7 @@ class QueryService:
                 question=request.question,
                 answer=response.answer,
                 retrieved_chunks_count=len(retrieved_chunks),
-                generation_mode=request.generation_mode.value,
+                generation_mode=request.generation_mode,
                 llm_config=request.llm_config.model_dump() if request.llm_config else None,
                 retrieval_time=response.retrieval_time,
                 generation_time=response.generation_time,

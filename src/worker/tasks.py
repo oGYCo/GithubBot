@@ -65,9 +65,21 @@ def process_query(self, session_id: str, request_data: dict):
     """
     Celery task to process query requests
     """
+    logger.info(f"🔄 [Worker] 开始处理查询任务: {self.request.id}")
+    
+    # 添加详细的调试日志
+    logger.info(f"🔍 [DEBUG] Worker 接收到的 request_data:")
+    logger.info(f"🔍 [DEBUG] - request_data 类型: {type(request_data)}")
+    logger.info(f"🔍 [DEBUG] - request_data 内容: {request_data}")
+    
+    for key, value in request_data.items():
+        logger.info(f"🔍 [DEBUG] - {key}: {value} (type: {type(value)})")
+    
     try:
         # 重构QueryRequest对象
+        logger.info(f"🔍 [DEBUG] 正在创建 QueryRequest 对象...")
         query_request = QueryRequest(**request_data)
+        logger.info(f"🔍 [DEBUG] QueryRequest 对象创建成功: {query_request}")
         
         # 执行实际的query操作 - 注意这里不能用async/await
         # 如果query_service.query是异步的，需要用同步包装器

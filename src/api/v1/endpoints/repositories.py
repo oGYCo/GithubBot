@@ -5,6 +5,7 @@ from ....services.task_queue import task_queue
 from ....worker.tasks import process_repository_task
 from ....db.session import get_db_session
 from ....db.models import AnalysisSession, TaskStatus
+from ....services.query_service import QueryService
 from datetime import datetime, timezone
 import logging
 
@@ -142,7 +143,7 @@ async def query(req: QueryRequest):
     """
     logger.info(f"🔍 [查询请求] 收到查询请求 - 目标会话: {req.session_id}")
     logger.info(f"❓ [查询内容] 问题: {req.question[:100]}{'...' if len(req.question) > 100 else ''}")
-    logger.info(f"⚙️ [查询配置] 生成模式: {req.generation_mode.value}")
+    logger.info(f"⚙️ [查询配置] 生成模式: {req.generation_mode}")
     
     if req.llm_config:
         logger.info(f"🤖 [LLM配置] 提供商: {req.llm_config.provider}, 模型: {req.llm_config.model_name}")
@@ -322,3 +323,25 @@ async def query_task_info(session_id: str):
         return task_info
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving task info: {str(e)}")
+
+@router.post("/cache/clear")
+async def clear_cache():
+    """
+    Clear BM25 cache to apply improved tokenization and file name matching logic
+    """
+    try:
+        logger.info("🧹 [缓存清理] 收到清除BM25缓存请求")
+        
+        # 创建QueryService实例并清除缓存
+        query_service = QueryService()
+        query_service.clear_cache()
+        
+        logger.info("✅ [缓存清理] BM25缓存已成功清除")
+        return {
+            "status": "success",
+            "message": "BM25 cache cleared successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ [缓存清理错误] 清除BM25缓存失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clear cache: {str(e)}")

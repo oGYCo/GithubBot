@@ -156,7 +156,7 @@ class Settings(BaseSettings):
 
     @field_validator("ALLOWED_FILE_EXTENSIONS", "EXCLUDED_DIRECTORIES", mode='before')
     def parse_comma_separated_string(cls, v) -> List[str]:
-        """将逗号分隔的字符串解析为列表"""
+        """将逗号分隔的字符串或JSON数组解析为列表"""
         if not v:
             return []
         
@@ -164,15 +164,27 @@ class Settings(BaseSettings):
         if isinstance(v, list):
             return [str(item).strip() for item in v if item]
         
-        # 如果是字符串，按逗号分隔
+        # 如果是字符串，尝试解析JSON数组或逗号分隔
         if isinstance(v, str):
+            v = v.strip()
+            
+            # 尝试解析JSON数组格式
+            if v.startswith('[') and v.endswith(']'):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if item]
+                except json.JSONDecodeError:
+                    pass
+            
+            # 否则按逗号分隔处理
             return [item.strip() for item in v.split(',') if item.strip()]
         
         # 其他类型转换为字符串后处理
         return [str(v).strip()] if v else []
 
     #---混合检索返回的文件个数---
-    FINAL_CONTEXT_TOP_K: int = 5
+    FINAL_CONTEXT_TOP_K: int = 10
 
     # --- 向量检索和 BM25 检索返回的文档数量 ---
     VECTOR_SEARCH_TOP_K: int = 10

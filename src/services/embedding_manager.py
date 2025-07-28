@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from langchain_openai import OpenAIEmbeddings, AzureOpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.embeddings import Embeddings
 from ..core.config import settings
@@ -48,6 +49,10 @@ class EmbeddingConfig:
 
         if self.provider == "ollama" and not self.api_base:
             self.api_base = "http://localhost:11434"
+            
+        # 根据提供商调整批次大小限制
+        if self.provider == "qwen" and self.batch_size > 10:
+            self.batch_size = 10  # Qwen API 批次大小限制为 10
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'EmbeddingConfig':
@@ -252,6 +257,7 @@ class EmbeddingManager:
             EmbeddingError: 当模型加载失败时
         """
         logger.info(f"正在加载 {config.provider} 的 {config.model_name} 模型")
+        logger.info(f"🔍 [调试] EmbeddingManager - 接收到的config: provider={config.provider}, model={config.model_name}, api_key={'***' if config.api_key else 'None'}")
 
         # 检查提供商是否支持
         if config.provider not in EmbeddingManager.SUPPORTED_PROVIDERS:
@@ -261,8 +267,11 @@ class EmbeddingManager:
         try:
             # 动态调用相应的创建方法
             method_name = EmbeddingManager.SUPPORTED_PROVIDERS[config.provider]
+            logger.info(f"🔍 [调试] EmbeddingManager - 将调用方法: {method_name}")
             method = getattr(EmbeddingManager, method_name)
-            return method(config)
+            result = method(config)
+            logger.info(f"🔍 [调试] EmbeddingManager - 创建的模型类型: {type(result)}")
+            return result
 
         except Exception as e:
             logger.error(f"加载 {config.provider} 模型失败: {str(e)}")
@@ -409,14 +418,19 @@ class EmbeddingManager:
             if not api_key:
                 raise EmbeddingError("通义千问模型需要 API Key，请在请求中提供 api_key 或在 .env 文件中设置 QWEN_API_KEY 或 DASHSCOPE_API_KEY")
             
+            # 确保 extra_params 不为 None
+            extra_params = config.extra_params or {}
+            
             params = {
                 "model": config.model_name,
                 "api_key": api_key,
                 "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                "show_progress_bar": True,
+                "show_progress_bar": False,  # 禁用进度条避免额外依赖
                 "max_retries": config.max_retries,
                 "timeout": config.timeout,
-                **config.extra_params
+                "tiktoken_enabled": False,  # 对于非 OpenAI 实现禁用 tiktoken
+                "check_embedding_ctx_length": False,
+                **extra_params
             }
 
             return OpenAIEmbeddings(**params)

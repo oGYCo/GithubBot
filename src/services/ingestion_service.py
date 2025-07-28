@@ -60,21 +60,16 @@ class IngestionService:
 
             # 创建 embedding 配置对象
             logger.info(f"⚙️ [配置加载] 会话ID: {session_id} - 创建Embedding配置")
-            embedding_cfg = EmbeddingConfig(
-                provider=embedding_config["provider"],
-                model_name=embedding_config["model_name"],
-                api_key=embedding_config.get("api_key"),
-                api_base=embedding_config.get("api_base"),
-                api_version=embedding_config.get("api_version"),
-                deployment_name=embedding_config.get("deployment_name"),
-                extra_params=embedding_config.get("extra_params") or {}
-            )
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - 接收到的embedding_config: {embedding_config}")
+            embedding_cfg = EmbeddingConfig.from_dict(embedding_config)
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - 创建的embedding_cfg: provider={embedding_cfg.provider}, model={embedding_cfg.model_name}, batch_size={embedding_cfg.batch_size}, api_key={'***' if embedding_cfg.api_key else 'None'}")
             self._update_task_progress(task_instance, 10, "配置加载完成")
 
             # 加载 embedding 模型
             logger.info(f"🤖 [模型加载] 会话ID: {session_id} - 正在加载 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
             embedding_model = EmbeddingManager.get_embedding_model(embedding_cfg)
-            logger.info(f"✅ [模型就绪] 会话ID: {session_id} - Embedding模型加载成功")
+            logger.info(f"✅ [模型就绪] 会话ID: {session_id} - Embedding模型加载成功，类型: {type(embedding_model)}")
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - embedding_model 详情: {embedding_model}")
             self._update_task_progress(task_instance, 15, "Embedding模型加载完成")
 
             # 创建向量数据库集合
@@ -124,7 +119,7 @@ class IngestionService:
             # 向量化和存储文档
             if all_documents:
                 logger.info(f"🔄 [向量化] 会话ID: {session_id} - 开始向量化 {len(all_documents)} 个文档块")
-                self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model, task_instance)
+                self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model, task_instance, embedding_cfg.batch_size)
                 logger.info(f"✅ [向量化完成] 会话ID: {session_id} - 所有文档向量化并存储完成")
             else:
                 logger.warning(f"⚠️ [无文档] 会话ID: {session_id} - 仓库没有生成任何文档块")
@@ -236,10 +231,12 @@ class IngestionService:
                         logger.debug(f"🔧 [特殊文件] 会话ID: {session_id} - {relative_file_path}: {special_info.get('type', '')}")
 
                 # 分割文档
+                # 从文件信息中获取语言类型
+                file_type, language = self.file_parser.get_file_type_and_language(file_path)
                 documents = self.file_parser.split_file_content(
                     content,
                     relative_file_path,
-                    language=None
+                    language=language
                 )
 
                 if documents:
@@ -294,6 +291,8 @@ class IngestionService:
 
         return processed_files, total_chunks, all_documents
 
+
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10)
@@ -317,7 +316,8 @@ class IngestionService:
             embedding_model: Embedding 模型
             batch_size: 批处理大小
         """
-        batch_size = batch_size or settings.EMBEDDING_BATCH_SIZE
+        if batch_size is None:
+            batch_size = settings.EMBEDDING_BATCH_SIZE
         total_docs = len(documents)
         total_batches = (total_docs + batch_size - 1) // batch_size
 
@@ -333,38 +333,51 @@ class IngestionService:
             try:
                 logger.info(f"⚡ [批次处理] 会话ID: {session_id} - 处理第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
                 
-                # 检查和清理文本内容
+                # 清理和验证文本
                 cleaned_texts = []
-                for idx, text in enumerate(batch_texts):
+                for text in batch_texts:
+                    # 确保是字符串类型
                     if not isinstance(text, str):
-                        logger.warning(f"🔧 [文本格式] 会话ID: {session_id} - 文档 {i+idx} 的内容不是字符串类型: {type(text)}")
-                        text = str(text) if text is not None else ""
+                        text = str(text)
                     
-                    # 确保文本不为空且是有效字符串
-                    if not text or not text.strip():
-                        logger.warning(f"🔧 [空文本] 会话ID: {session_id} - 文档 {i+idx} 内容为空，跳过")
-                        text = "[空文档]"
-                    
-                    cleaned_texts.append(text.strip())
+                    # 跳过空文档
+                    if not text.strip():
+                        continue
+                        
+                    cleaned_texts.append(text)
                 
-                logger.debug(f"🔧 [文本检查] 会话ID: {session_id} - 批次文本样例: {cleaned_texts[0][:100] if cleaned_texts else '无内容'}...")
+                if not cleaned_texts:
+                    logger.warning(f"⚠️ [空批次] 会话ID: {session_id} - 批次中没有有效文档")
+                    continue
                 
                 # 向量化文本
                 start_time = time.time()
-                logger.debug(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
+                logger.info(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
                 embeddings = embedding_model.embed_documents(cleaned_texts)
                 embedding_time = time.time() - start_time
-                logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
+                logger.info(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
 
+                # 创建对应的文档列表（只包含有效的文档）
+                valid_docs = []
+                cleaned_idx = 0
+                for idx, text in enumerate(batch_texts):
+                    # 确保是字符串类型且非空
+                    if isinstance(text, str) or str(text).strip():
+                        if not str(text).strip():
+                            continue
+                        if cleaned_idx < len(cleaned_texts):
+                            valid_docs.append(batch_docs[idx])
+                            cleaned_idx += 1
+                
                 # 存储到向量数据库
-                logger.debug(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
+                logger.info(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
                 success = get_vector_store().add_documents_to_collection(
-                    session_id, batch_docs, embeddings, len(batch_docs)
+                    session_id, valid_docs, embeddings, len(valid_docs)
                 )
 
                 if not success:
                     raise Exception("向量数据库存储失败")
-                logger.debug(f"✅ [存储完成] 会话ID: {session_id} - 批次数据存储成功")
+                logger.info(f"✅ [存储完成] 会话ID: {session_id} - 批次数据存储成功")
 
                 # 更新进度
                 indexed_chunks = min(i + batch_size, total_docs)
