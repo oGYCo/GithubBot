@@ -187,6 +187,14 @@ class VectorStore:
             total_batches = (total_docs + batch_size - 1) // batch_size
             logger.info(f"📊 [存储配置] 集合: {collection_name} - 批次大小: {batch_size}, 总批次数: {total_batches}")
 
+            # 获取集合中已有的文档数量，确保ID不重复
+            try:
+                existing_count = collection.count()
+                logger.info(f"📊 [初始状态] 集合: {collection_name} - 已有文档数: {existing_count}")
+            except:
+                existing_count = 0
+                logger.info(f"📊 [初始状态] 集合: {collection_name} - 新集合，从0开始")
+
             for i in range(0, total_docs, batch_size):
                 batch_num = i // batch_size + 1
                 batch_docs = documents[i:i + batch_size]
@@ -195,9 +203,10 @@ class VectorStore:
 
                 logger.debug(f"🔄 [批次准备] 集合: {collection_name} - 准备第 {batch_num}/{total_batches} 批次 ({actual_batch_size} 个文档)")
 
-                # 准备批次数据 - 修复ID重复问题
-                ids = [f"chunk_{collection_name}_{i + j}" for j in range(len(batch_docs))]
-                logger.info(f"🔢 [ID生成] 集合: {collection_name} - 批次 {batch_num} ID范围: {ids[0]} 到 {ids[-1]}")
+                # 准备批次数据 - 修复ID重复问题，确保ID全局唯一
+                start_id = existing_count + i
+                ids = [f"chunk_{collection_name}_{start_id + j}" for j in range(len(batch_docs))]
+                logger.info(f"🔢 [ID生成] 集合: {collection_name} - 批次 {batch_num} ID范围: {ids[0]} 到 {ids[-1]} (起始ID: {start_id})")
                 documents_content = [doc.page_content for doc in batch_docs]
                 metadatas = []
 
