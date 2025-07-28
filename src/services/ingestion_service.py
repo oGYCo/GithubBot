@@ -231,10 +231,12 @@ class IngestionService:
                         logger.debug(f"🔧 [特殊文件] 会话ID: {session_id} - {relative_file_path}: {special_info.get('type', '')}")
 
                 # 分割文档
+                # 从文件信息中获取语言类型
+                file_type, language = self.file_parser.get_file_type_and_language(file_path)
                 documents = self.file_parser.split_file_content(
                     content,
                     relative_file_path,
-                    language=None
+                    language=language
                 )
 
                 if documents:
