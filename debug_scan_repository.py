@@ -89,7 +89,8 @@ def main():
                         content = parser.read_file_content(file_path)
                         if content:
                             print(f"  内容长度: {len(content)} 字符")
-                            print(f"  行数: {len(content.split('\n'))} 行")
+                            line_count = len(content.split('\n'))
+                            print(f"  行数: {line_count} 行")
                             
                             # 测试文档分割
                             documents = parser.split_file_content(content, rel_path, language)
