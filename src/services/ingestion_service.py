@@ -350,10 +350,10 @@ class IngestionService:
                 
                 # 向量化文本
                 start_time = time.time()
-                logger.debug(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
+                logger.info(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
                 embeddings = embedding_model.embed_documents(cleaned_texts)
                 embedding_time = time.time() - start_time
-                logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
+                logger.info(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
 
                 # 创建对应的文档列表（只包含有效的文档）
                 valid_docs = []
@@ -368,14 +368,14 @@ class IngestionService:
                             cleaned_idx += 1
                 
                 # 存储到向量数据库
-                logger.debug(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
+                logger.info(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
                 success = get_vector_store().add_documents_to_collection(
                     session_id, valid_docs, embeddings, len(valid_docs)
                 )
 
                 if not success:
                     raise Exception("向量数据库存储失败")
-                logger.debug(f"✅ [存储完成] 会话ID: {session_id} - 批次数据存储成功")
+                logger.info(f"✅ [存储完成] 会话ID: {session_id} - 批次数据存储成功")
 
                 # 更新进度
                 indexed_chunks = min(i + batch_size, total_docs)
