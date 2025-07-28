@@ -110,12 +110,16 @@ def test_with_langchain_openai():
         print("-" * 50)
         
         # 从环境变量或直接设置 API Key
-        api_key = ""
+        api_key = "sk-8bac0158a9ee415ba246ccb2b120f733"
+        
+        # 设置环境变量
+        os.environ["OPENAI_API_KEY"] = api_key
+        os.environ["OPENAI_API_BASE"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
         
         embeddings = OpenAIEmbeddings(
             model="text-embedding-v4",
-            openai_api_key=api_key,
-            openai_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             skip_empty=True
         )
         
