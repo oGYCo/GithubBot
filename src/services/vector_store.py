@@ -205,6 +205,9 @@ class VectorStore:
                     # 将文档内容也存入元数据（ChromaDB 最佳实践）
                     metadata["content"] = doc.page_content
                     
+                    # 记录原始元数据
+                    logger.info(f"🔍 [原始元数据] 文档 {j}: {metadata}")
+                    
                     # 确保所有元数据值都是 ChromaDB 支持的基本类型
                     cleaned_metadata = {}
                     for key, value in metadata.items():
@@ -214,13 +217,11 @@ class VectorStore:
                             cleaned_metadata[key] = value
                         else:
                             # 将复杂类型转换为字符串
-                            logger.debug(f"🔧 [类型转换] 字段 {key}: {type(value)} -> str, 原值: {value}")
+                            logger.info(f"🔧 [类型转换] 字段 {key}: {type(value)} -> str, 原值: {value}")
                             cleaned_metadata[key] = str(value)
                     
                     # 记录清理后的元数据
-                    if j == 0:  # 只记录第一个文档的元数据
-                        logger.debug(f"🧹 [元数据清理] 原始: {metadata}")
-                        logger.debug(f"🧹 [元数据清理] 清理后: {cleaned_metadata}")
+                    logger.info(f"🧹 [清理后元数据] 文档 {j}: {cleaned_metadata}")
                     
                     metadatas.append(cleaned_metadata)
                     
