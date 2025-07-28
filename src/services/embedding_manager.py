@@ -253,6 +253,7 @@ class EmbeddingManager:
             EmbeddingError: 当模型加载失败时
         """
         logger.info(f"正在加载 {config.provider} 的 {config.model_name} 模型")
+        logger.info(f"🔍 [调试] EmbeddingManager - 接收到的config: provider={config.provider}, model={config.model_name}, api_key={'***' if config.api_key else 'None'}")
 
         # 检查提供商是否支持
         if config.provider not in EmbeddingManager.SUPPORTED_PROVIDERS:
@@ -262,8 +263,11 @@ class EmbeddingManager:
         try:
             # 动态调用相应的创建方法
             method_name = EmbeddingManager.SUPPORTED_PROVIDERS[config.provider]
+            logger.info(f"🔍 [调试] EmbeddingManager - 将调用方法: {method_name}")
             method = getattr(EmbeddingManager, method_name)
-            return method(config)
+            result = method(config)
+            logger.info(f"🔍 [调试] EmbeddingManager - 创建的模型类型: {type(result)}")
+            return result
 
         except Exception as e:
             logger.error(f"加载 {config.provider} 模型失败: {str(e)}")

@@ -60,6 +60,7 @@ class IngestionService:
 
             # 创建 embedding 配置对象
             logger.info(f"⚙️ [配置加载] 会话ID: {session_id} - 创建Embedding配置")
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - 接收到的embedding_config: {embedding_config}")
             embedding_cfg = EmbeddingConfig(
                 provider=embedding_config["provider"],
                 model_name=embedding_config["model_name"],
@@ -69,12 +70,14 @@ class IngestionService:
                 deployment_name=embedding_config.get("deployment_name"),
                 extra_params=embedding_config.get("extra_params") or {}
             )
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - 创建的embedding_cfg: provider={embedding_cfg.provider}, model={embedding_cfg.model_name}, api_key={'***' if embedding_cfg.api_key else 'None'}")
             self._update_task_progress(task_instance, 10, "配置加载完成")
 
             # 加载 embedding 模型
             logger.info(f"🤖 [模型加载] 会话ID: {session_id} - 正在加载 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
             embedding_model = EmbeddingManager.get_embedding_model(embedding_cfg)
-            logger.info(f"✅ [模型就绪] 会话ID: {session_id} - Embedding模型加载成功")
+            logger.info(f"✅ [模型就绪] 会话ID: {session_id} - Embedding模型加载成功，类型: {type(embedding_model)}")
+            logger.info(f"🔍 [调试] 会话ID: {session_id} - embedding_model 详情: {embedding_model}")
             self._update_task_progress(task_instance, 15, "Embedding模型加载完成")
 
             # 创建向量数据库集合
