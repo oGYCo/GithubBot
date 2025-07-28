@@ -294,44 +294,7 @@ class IngestionService:
 
         return processed_files, total_chunks, all_documents
 
-    def _debug_document_content(self, documents: List[Document], session_id: str, max_docs: int = 5) -> None:
-        """
-        调试方法：显示处理后的文档内容
-        
-        Args:
-            documents: 文档列表
-            session_id: 会话ID
-            max_docs: 最多显示的文档数量
-        """
-        logger.info(f"📋 [文档内容调试] 会话ID: {session_id} - 总文档数: {len(documents)}")
-        
-        for i, doc in enumerate(documents[:max_docs]):
-            content = doc.page_content
-            metadata = doc.metadata
-            
-            logger.info(f"📄 [文档 {i+1}] 会话ID: {session_id}")
-            logger.info(f"   📊 元数据: {metadata}")
-            logger.info(f"   📝 内容长度: {len(content)} 字符")
-            logger.info(f"   🔤 内容类型: {type(content)}")
-            logger.info(f"   📖 内容预览 (前200字符): {repr(content[:200])}")
-            
-            # 检查是否包含特殊字符
-            import re
-            control_chars = re.findall(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', content)
-            if control_chars:
-                logger.warning(f"   ⚠️ 发现控制字符: {len(control_chars)} 个")
-            
-            # 检查编码
-            try:
-                content.encode('utf-8')
-                logger.info(f"   ✅ UTF-8 编码: 正常")
-            except UnicodeEncodeError as e:
-                logger.warning(f"   ❌ UTF-8 编码: 异常 - {str(e)}")
-            
-            logger.info("   " + "-" * 50)
-        
-        if len(documents) > max_docs:
-            logger.info(f"   ... 还有 {len(documents) - max_docs} 个文档未显示")
+
 
     @retry(
         stop=stop_after_attempt(3),
@@ -360,9 +323,6 @@ class IngestionService:
         total_docs = len(documents)
         total_batches = (total_docs + batch_size - 1) // batch_size
 
-        # 调试：显示处理后的文档内容
-        #self._debug_document_content(documents, session_id, max_docs=30)
-        
         logger.info(f"🔄 [向量化开始] 会话ID: {session_id} - 开始向量化 {total_docs} 个文档块，批次大小: {batch_size}")
         logger.info(f"📊 [批次信息] 会话ID: {session_id} - 总共需要处理 {total_batches} 个批次")
 
@@ -392,46 +352,24 @@ class IngestionService:
                     logger.warning(f"⚠️ [空批次] 会话ID: {session_id} - 批次中没有有效文档")
                     continue
                 
-                # 调试：检查 cleaned_texts 的内容
-                logger.info(f"🔍 [向量化前调试] 会话ID: {session_id} - cleaned_texts 类型: {type(cleaned_texts)}, 长度: {len(cleaned_texts)}")
-                for idx, text in enumerate(cleaned_texts[:3]):  # 只显示前3个
-                    logger.info(f"🔍 [文本调试] 会话ID: {session_id} - 索引 {idx}: 类型={type(text)}, 长度={len(text) if hasattr(text, '__len__') else 'N/A'}, 内容预览={repr(text[:100])}")
-                
-                # 最终验证：确保所有元素都是字符串
-                final_texts = []
-                for idx, text in enumerate(cleaned_texts):
-                    if not isinstance(text, str):
-                        logger.error(f"❌ [类型错误] 会话ID: {session_id} - 索引 {idx} 不是字符串: {type(text)} = {repr(text)}")
-                        text = str(text)
-                    
-                    # 确保不是空字符串
-                    if not text.strip():
-                        logger.warning(f"⚠️ [空字符串] 会话ID: {session_id} - 索引 {idx} 是空字符串，跳过")
-                        continue
-                    
-                    final_texts.append(text)
-                
-                if not final_texts:
-                    logger.error(f"❌ [无有效文本] 会话ID: {session_id} - 最终验证后没有有效文本")
-                    continue
-                
-                logger.info(f"✅ [验证完成] 会话ID: {session_id} - 最终文本数量: {len(final_texts)}")
-                
                 # 向量化文本
                 start_time = time.time()
                 logger.debug(f"🧠 [向量化中] 会话ID: {session_id} - 正在生成向量...")
-                embeddings = embedding_model.embed_documents(final_texts)
+                embeddings = embedding_model.embed_documents(cleaned_texts)
                 embedding_time = time.time() - start_time
                 logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 向量化完成，耗时 {embedding_time:.2f}s")
 
                 # 创建对应的文档列表（只包含有效的文档）
                 valid_docs = []
-                valid_idx = 0
-                for idx, text in enumerate(cleaned_texts):
-                    if isinstance(text, str) and text.strip():
-                        if valid_idx < len(final_texts):
+                cleaned_idx = 0
+                for idx, text in enumerate(batch_texts):
+                    # 确保是字符串类型且非空
+                    if isinstance(text, str) or str(text).strip():
+                        if not str(text).strip():
+                            continue
+                        if cleaned_idx < len(cleaned_texts):
                             valid_docs.append(batch_docs[idx])
-                            valid_idx += 1
+                            cleaned_idx += 1
                 
                 # 存储到向量数据库
                 logger.debug(f"💾 [存储中] 会话ID: {session_id} - 正在存储到向量数据库...")
