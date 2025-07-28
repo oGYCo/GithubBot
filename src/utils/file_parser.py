@@ -396,7 +396,7 @@ class FileParser:
             metadatas=[{
                 "file_path": rel_path,
                 "file_type": self.get_file_type_and_language(file_path)[0],
-                "language": language.value if language else None,
+                "language": language.value if language and hasattr(language, 'value') else language,
                 "source": file_path
             }]
         )
@@ -523,7 +523,7 @@ class FileParser:
                         "file_path": rel_path,
                         "full_path": file_path,
                         "file_type": file_type,
-                        "language": language.value if language else None,
+                        "language": language.value if language and hasattr(language, 'value') else language,
                         "file_size": stat.st_size,
                         "file_extension": os.path.splitext(file_name)[1].lower()
                     }
