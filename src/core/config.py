@@ -126,7 +126,7 @@ class Settings(BaseSettings):
 
     # 远程 ChromaDB 服务器配置 (当 CHROMADB_PERSISTENT_PATH 未设置时使用)
     CHROMADB_HOST: str = "chromadb"
-    CHROMADB_PORT: int = 8001
+    CHROMADB_PORT: int = 8000
 
     # --- LLM 和 Embedding 模型 API Keys ---
     OPENAI_API_KEY: Optional[str] = None

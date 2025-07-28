@@ -53,7 +53,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
-      - CHROMADB_PORT=${CHROMADB_PORT:-8001}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
       - DEBUG=${DEBUG:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -89,7 +89,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
-      - CHROMADB_PORT=${CHROMADB_PORT:-8001}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
       - DEBUG=${DEBUG:-false}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -124,7 +124,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CHROMADB_HOST=${CHROMADB_HOST:-chromadb}
-      - CHROMADB_PORT=${CHROMADB_PORT:-8001}
+      - CHROMADB_PORT=${CHROMADB_PORT:-8000}
     ports:
       - "5555:5555"
     depends_on:
