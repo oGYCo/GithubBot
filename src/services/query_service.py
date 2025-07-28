@@ -496,6 +496,10 @@ class QueryService:
             provider_value = llm_config.provider.value if hasattr(llm_config.provider, 'value') else llm_config.provider
             logger.info(f"🔍 [DEBUG] - 最终使用的 provider 值: {provider_value} (type: {type(provider_value)})")
             
+            # 处理 extra_params，确保它是一个字典
+            extra_params = llm_config.extra_params or {}
+            logger.info(f"🔍 [DEBUG] - extra_params: {extra_params} (type: {type(extra_params)})")
+            
             llm_cfg = LLMConfig(
                 provider=provider_value,
                 model_name=llm_config.model_name,
@@ -505,7 +509,7 @@ class QueryService:
                 deployment_name=llm_config.deployment_name,
                 temperature=llm_config.temperature,
                 max_tokens=llm_config.max_tokens,
-                **llm_config.extra_params
+                **extra_params
             )
 
             # 加载 LLM 模型
