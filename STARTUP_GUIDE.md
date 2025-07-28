@@ -149,7 +149,7 @@ curl "http://localhost:8000/api/v1/repos/status/bb36ec10-6ee8-4a43-92aa-3b61cffb
 curl -X POST "http://localhost:8000/api/v1/repos/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "session_id": "b7985d65-4787-4eb9-a1be-6e4c829715b5",
+    "session_id": "5afcd74c-15ae-4c11-9386-2cecab37b3af",
     "question": "讲解一下llm_manager.py这个代码文件",
     "generation_mode": "service",
     "llm_config": {

@@ -410,7 +410,21 @@ class QueryService:
 
             # 改进的分词逻辑
             query_tokens = self._improved_tokenize(question)
-            logger.debug(f"📝 [分词结果] 会话ID: {session_id} - 查询词: {query_tokens}")
+            logger.info(f"📝 [分词结果] 会话ID: {session_id} - 原始问题: '{question}', 分词结果: {query_tokens}")
+            
+            # 调试：检查文档分词情况
+            documents = self._documents_cache.get(session_id, [])
+            if documents and len(documents) > 0:
+                sample_doc = documents[0]
+                sample_content = sample_doc["metadata"].get("content", sample_doc["content"])
+                sample_file_path = sample_doc["metadata"].get("file_path", "")
+                sample_combined = f"{sample_content} {sample_file_path}"
+                sample_tokens = self._improved_tokenize(sample_combined)
+                logger.info(f"📄 [样本文档分词] 文件: {sample_file_path}, 分词结果前10个: {sample_tokens[:10]}")
+                
+                # 检查查询词是否在文档分词中
+                matching_tokens = [token for token in query_tokens if token in sample_tokens]
+                logger.info(f"🔍 [匹配检查] 查询词在样本文档中的匹配: {matching_tokens}")
 
             # BM25 搜索
             logger.debug(f"🔍 [BM25计算] 会话ID: {session_id} - 正在计算BM25分数...")
