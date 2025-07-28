@@ -99,7 +99,8 @@ if __name__ == "__main__":
             content = file_parser.read_file_content(test_py_file)
             if content:
                 print(f"  文件内容长度: {len(content)} 字符")
-                print(f"  文件行数: {len(content.split('\n'))} 行")
+                line_count = len(content.split('\n'))
+                print(f"  文件行数: {line_count} 行")
                 
                 # 测试文档分割
                 documents = file_parser.split_file_content(
