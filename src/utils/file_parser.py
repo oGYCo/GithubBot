@@ -255,19 +255,78 @@ class FileParser:
         """
         try:
             encoding = self.detect_encoding(file_path)
-            with open(file_path, 'r', encoding=encoding, errors='ignore') as f:
-                content = f.read()
+            
+            # 尝试多种编码方式读取文件
+            encodings_to_try = [encoding, 'utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+            content = None
+            
+            for enc in encodings_to_try:
+                try:
+                    with open(file_path, 'r', encoding=enc, errors='strict') as f:
+                        content = f.read()
+                    break
+                except (UnicodeDecodeError, UnicodeError):
+                    continue
+            
+            if content is None:
+                # 如果所有编码都失败，使用二进制模式读取并尝试解码
+                with open(file_path, 'rb') as f:
+                    raw_content = f.read()
+                try:
+                    content = raw_content.decode('utf-8', errors='replace')
+                except Exception:
+                    content = raw_content.decode('latin-1', errors='replace')
             
             # 检查文件大小（避免处理过大的文件）
             if len(content) > 1024 * 1024:  # 1MB
                 logger.warning(f"文件过大，跳过: {file_path}")
                 return None
             
+            # 清理和规范化文本内容
+            content = self._clean_text_content(content)
+            
             return content
             
         except Exception as e:
             logger.error(f"读取文件失败 {file_path}: {str(e)}")
             return None
+    
+    def _clean_text_content(self, content: str) -> str:
+        """
+        清理和规范化文本内容
+        
+        Args:
+            content: 原始文本内容
+            
+        Returns:
+            str: 清理后的文本内容
+        """
+        import re
+        import unicodedata
+        
+        # 移除或替换控制字符（保留换行符和制表符）
+        content = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', content)
+        
+        # 规范化Unicode字符
+        content = unicodedata.normalize('NFKC', content)
+        
+        # 确保内容是有效的UTF-8字符串
+        try:
+            content = content.encode('utf-8', errors='ignore').decode('utf-8')
+        except Exception:
+            # 如果编码失败，移除非ASCII字符
+            content = re.sub(r'[^\x00-\x7F]+', ' ', content)
+        
+        # 规范化换行符
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        
+        # 移除多余的空白字符
+        content = re.sub(r'\n{3,}', '\n\n', content)  # 最多保留两个连续换行
+        content = re.sub(r'[ \t]+\n', '\n', content)  # 移除行尾空白
+        
+        return content.strip()
+    
+
 
     def create_text_splitter(self, language: Optional[Language] = None) -> RecursiveCharacterTextSplitter:
         """
