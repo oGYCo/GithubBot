@@ -31,7 +31,7 @@ def test_qwen_embedding_api(api_key: str, test_texts: List[str] = None) -> bool:
             "测试中文和英文混合的文本 with mixed languages"
         ]
     
-    url = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
+    url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings"
     
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -114,13 +114,13 @@ def test_with_langchain_openai():
         
         # 设置环境变量
         os.environ["OPENAI_API_KEY"] = api_key
-        os.environ["OPENAI_API_BASE"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        os.environ["OPENAI_API_BASE"] = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
         
         embeddings = OpenAIEmbeddings(
             model="text-embedding-v4",
             api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-            skip_empty=True
+            base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            tiktoken_enabled=False
         )
         
         test_texts = [

@@ -245,7 +245,7 @@ class LLMManager:
             "api_key": api_key,
             "temperature": config.temperature,
             "max_retries": 3,
-            "base_url": config.api_base or "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "base_url": config.api_base or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
             **config.extra_params
         }
 
