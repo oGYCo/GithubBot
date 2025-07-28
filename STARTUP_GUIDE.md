@@ -149,8 +149,8 @@ curl "http://localhost:8000/api/v1/repos/status/bb36ec10-6ee8-4a43-92aa-3b61cffb
 curl -X POST "http://localhost:8000/api/v1/repos/query" \
   -H "Content-Type: application/json" \
   -d '{
-    "session_id": "9e9d2066-b72a-472e-88cf-9b70f520df6b",
-    "question": "讲解一下llm_manager.py这个代码文件",
+    "session_id": "41bc44e2-353d-4ad1-af0a-bbdc970926e3",
+    "question": "我刚才给你提供了哪些文件",
     "generation_mode": "service",
     "llm_config": {
       "provider": "qwen",
