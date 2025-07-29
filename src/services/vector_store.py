@@ -101,20 +101,37 @@ class VectorStore:
                     logger.info(f"✅ [Settings创建] ChromaSettings对象创建成功")
                     
                     logger.info(f"🔌 [HttpClient创建] 正在创建HttpClient连接...")
-                    self.client = chromadb.HttpClient(
-                        host=settings.CHROMADB_HOST,
-                        port=settings.CHROMADB_PORT,
-                        settings=chroma_settings
-                    )
-                    logger.info(f"✅ [连接成功] 已连接到 ChromaDB 服务器: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
-                    logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
+                    logger.info(f"📋 [连接参数] Host: {settings.CHROMADB_HOST}, Port: {settings.CHROMADB_PORT}")
+                    logger.info(f"📋 [连接参数] Settings: anonymized_telemetry=False")
+                    
+                    try:
+                        self.client = chromadb.HttpClient(
+                            host=settings.CHROMADB_HOST,
+                            port=settings.CHROMADB_PORT,
+                            settings=chroma_settings
+                        )
+                        logger.info(f"✅ [HttpClient创建成功] ChromaDB HttpClient 对象创建成功")
+                        logger.info(f"🔗 [连接地址] http://{settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                        logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
+                    except Exception as client_error:
+                        logger.error(f"❌ [HttpClient创建失败] 创建 ChromaDB HttpClient 时发生错误")
+                        logger.error(f"🔍 [错误类型] {type(client_error).__name__}")
+                        logger.error(f"🔍 [错误详情] {str(client_error)}")
+                        raise
                 
                 # 测试连接
+                logger.info(f"💓 [开始心跳检测] 正在测试 ChromaDB 连接...")
                 try:
-                    self.client.heartbeat()
-                    logger.info(f"💓 [心跳检测] ChromaDB 连接测试成功")
+                    heartbeat_result = self.client.heartbeat()
+                    logger.info(f"💓 [心跳检测成功] ChromaDB 连接测试成功")
+                    logger.info(f"💓 [心跳结果] {heartbeat_result}")
                 except Exception as heartbeat_error:
-                    logger.warning(f"⚠️ [心跳警告] ChromaDB 心跳检测失败，但连接可能仍然有效: {str(heartbeat_error)}")
+                    logger.error(f"❌ [心跳检测失败] ChromaDB 心跳检测失败")
+                    logger.error(f"🔍 [心跳错误类型] {type(heartbeat_error).__name__}")
+                    logger.error(f"🔍 [心跳错误详情] {str(heartbeat_error)}")
+                    logger.error(f"🔍 [心跳错误完整信息] {repr(heartbeat_error)}")
+                    # 心跳失败时抛出异常，触发重试机制
+                    raise heartbeat_error
                 
                 return  # 连接成功，退出重试循环
                 
