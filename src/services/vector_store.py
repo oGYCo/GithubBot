@@ -96,7 +96,9 @@ class VectorStore:
                     # 注意：ChromaDB Settings 不支持 timeout 参数
                     # 根据官方文档，HttpClient 也不直接支持 timeout 参数
                     chroma_settings = ChromaSettings(
-                        anonymized_telemetry=False
+                        anonymized_telemetry=False,
+                        chroma_client_auth_provider=None,
+                        chroma_client_auth_credentials=None
                     )
                     logger.info(f"✅ [Settings创建] ChromaSettings对象创建成功")
                     
@@ -108,11 +110,23 @@ class VectorStore:
                     
                     try:
                         logger.info("🚀 [开始创建] 正在调用 chromadb.HttpClient()...")
-                        self.client = chromadb.HttpClient(
-                            host=settings.CHROMADB_HOST,
-                            port=settings.CHROMADB_PORT,
-                            settings=chroma_settings
-                        )
+                        # 尝试不同的连接方式来避免认证问题
+                        try:
+                            self.client = chromadb.HttpClient(
+                                host=settings.CHROMADB_HOST,
+                                port=settings.CHROMADB_PORT,
+                                settings=chroma_settings
+                            )
+                        except Exception as auth_error:
+                            logger.warning(f"⚠️ [认证失败] 标准连接失败，尝试简化连接: {auth_error}")
+                            # 尝试使用最简化的设置
+                            simple_settings = ChromaSettings(anonymized_telemetry=False)
+                            self.client = chromadb.HttpClient(
+                                host=settings.CHROMADB_HOST,
+                                port=settings.CHROMADB_PORT,
+                                settings=simple_settings
+                            )
+                        
                         logger.info(f"✅ [HttpClient创建成功] ChromaDB HttpClient 对象创建成功")
                         logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
                         
@@ -145,7 +159,6 @@ class VectorStore:
                 try:
                     logger.info(f"🔄 [调用心跳] 正在调用 client.heartbeat() 方法...")
                     
-                    import time
                     start_time = time.time()
                     heartbeat_result = self.client.heartbeat()
                     end_time = time.time()
