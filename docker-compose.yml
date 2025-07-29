@@ -30,7 +30,7 @@ services:
 
   # ChromaDB 向量数据库
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.0.15
     container_name: github_bot_chromadb
     environment:
       - CHROMA_SERVER_HOST=0.0.0.0

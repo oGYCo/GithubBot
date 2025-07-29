@@ -17,7 +17,7 @@ redis==6.2.0
 flower==2.0.1
 
 # 向量数据库
-chromadb>=1.0.15
+chromadb==1.0.15
 
 
 # LangChain 核心
