@@ -4,6 +4,7 @@
 """
 
 import logging
+import time
 from typing import List, Dict, Any, Optional, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -64,33 +65,59 @@ class VectorStore:
         self._connect()
 
     def _connect(self):
-        """连接到 ChromaDB"""
-        try:
-            # 根据配置选择连接方式
-            if settings.CHROMADB_PERSISTENT_PATH:
-                # 使用持久化存储
-                self.client = chromadb.PersistentClient(
-                    path=settings.CHROMADB_PERSISTENT_PATH,
-                    settings=ChromaSettings(
+        """连接到 ChromaDB，支持重试机制"""
+        max_retries = settings.CHROMADB_MAX_RETRIES
+        retry_delay = settings.CHROMADB_RETRY_DELAY
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"🔄 [连接尝试] 第 {attempt + 1}/{max_retries} 次尝试连接 ChromaDB...")
+                
+                # 根据配置选择连接方式
+                if settings.CHROMADB_PERSISTENT_PATH:
+                    # 使用持久化存储
+                    self.client = chromadb.PersistentClient(
+                        path=settings.CHROMADB_PERSISTENT_PATH,
+                        settings=ChromaSettings(
+                            anonymized_telemetry=False,
+                            allow_reset=True
+                        )
+                    )
+                    logger.info(f"✅ [连接成功] 已连接到持久化 ChromaDB: {settings.CHROMADB_PERSISTENT_PATH}")
+                else:
+                    # 使用 HTTP 客户端，配置超时设置
+                    chroma_settings = ChromaSettings(
                         anonymized_telemetry=False,
-                        allow_reset=True
+                        chroma_client_timeout_seconds=settings.CHROMADB_CLIENT_TIMEOUT,
+                        chroma_server_timeout_seconds=settings.CHROMADB_SERVER_TIMEOUT
                     )
-                )
-                logger.info(f"已连接到持久化 ChromaDB: {settings.CHROMADB_PERSISTENT_PATH}")
-            else:
-                # 使用 HTTP 客户端
-                self.client = chromadb.HttpClient(
-                    host=settings.CHROMADB_HOST,
-                    port=settings.CHROMADB_PORT,
-                    settings=ChromaSettings(
-                        anonymized_telemetry=False
+                    
+                    self.client = chromadb.HttpClient(
+                        host=settings.CHROMADB_HOST,
+                        port=settings.CHROMADB_PORT,
+                        settings=chroma_settings
                     )
-                )
-                logger.info(f"已连接到 ChromaDB 服务器: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
-
-        except Exception as e:
-            logger.error(f"连接 ChromaDB 失败: {str(e)}")
-            raise
+                    logger.info(f"✅ [连接成功] 已连接到 ChromaDB 服务器: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                    logger.info(f"⏱️ [超时配置] 客户端超时: {settings.CHROMADB_CLIENT_TIMEOUT}s, 服务器超时: {settings.CHROMADB_SERVER_TIMEOUT}s")
+                
+                # 测试连接
+                try:
+                    self.client.heartbeat()
+                    logger.info(f"💓 [心跳检测] ChromaDB 连接测试成功")
+                except Exception as heartbeat_error:
+                    logger.warning(f"⚠️ [心跳警告] ChromaDB 心跳检测失败，但连接可能仍然有效: {str(heartbeat_error)}")
+                
+                return  # 连接成功，退出重试循环
+                
+            except Exception as e:
+                logger.error(f"❌ [连接失败] 第 {attempt + 1} 次连接 ChromaDB 失败: {str(e)}")
+                
+                if attempt < max_retries - 1:
+                    logger.info(f"⏳ [等待重试] {retry_delay} 秒后进行第 {attempt + 2} 次重试...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"💥 [连接彻底失败] 已尝试 {max_retries} 次，ChromaDB 连接失败")
+                    raise
 
     def create_collection(self, collection_name: str, embedding_function=None) -> bool:
         """

@@ -127,6 +127,14 @@ class Settings(BaseSettings):
     # 远程 ChromaDB 服务器配置 (当 CHROMADB_PERSISTENT_PATH 未设置时使用)
     CHROMADB_HOST: str = "chromadb"
     CHROMADB_PORT: int = 8000
+    
+    # ChromaDB 连接超时配置 (秒)
+    CHROMADB_CLIENT_TIMEOUT: int = 120
+    CHROMADB_SERVER_TIMEOUT: int = 120
+    
+    # ChromaDB 连接重试配置
+    CHROMADB_MAX_RETRIES: int = 5
+    CHROMADB_RETRY_DELAY: int = 3
 
     # --- LLM 和 Embedding 模型 API Keys ---
     OPENAI_API_KEY: Optional[str] = None
