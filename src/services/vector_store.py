@@ -98,7 +98,9 @@ class VectorStore:
                     chroma_settings = ChromaSettings(
                         anonymized_telemetry=False,
                         chroma_client_auth_provider=None,
-                        chroma_client_auth_credentials=None
+                        chroma_client_auth_credentials=None,
+                        chroma_server_authn_provider=None,
+                        chroma_server_authn_credentials=None
                     )
                     logger.info(f"✅ [Settings创建] ChromaSettings对象创建成功")
                     
@@ -112,13 +114,20 @@ class VectorStore:
                         logger.info("🚀 [开始创建] 正在调用 chromadb.HttpClient()...")
                         # 尝试不同的连接方式来避免认证问题
                         try:
+                            no_auth_settings = ChromaSettings(
+                                anonymized_telemetry=False,
+                                chroma_client_auth_provider=None,
+                                chroma_client_auth_credentials=None,
+                                chroma_server_authn_provider=None,
+                                chroma_server_authn_credentials=None
+                            )
                             self.client = chromadb.HttpClient(
                                 host=settings.CHROMADB_HOST,
                                 port=settings.CHROMADB_PORT,
-                                settings=chroma_settings
+                                settings=no_auth_settings
                             )
                         except Exception as auth_error:
-                            logger.warning(f"⚠️ [认证失败] 标准连接失败，尝试简化连接: {auth_error}")
+                            logger.warning(f"⚠️ [认证失败] 无认证连接失败，尝试最简化连接: {auth_error}")
                             # 尝试使用最简化的设置
                             simple_settings = ChromaSettings(anonymized_telemetry=False)
                             self.client = chromadb.HttpClient(
