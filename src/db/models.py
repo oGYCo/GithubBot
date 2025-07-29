@@ -20,6 +20,7 @@ class TaskStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PARTIAL_SUCCESS = "partial_success"
 
 
 class AnalysisSession(Base):
