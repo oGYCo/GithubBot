@@ -72,10 +72,14 @@ class VectorStore:
         for attempt in range(max_retries):
             try:
                 logger.info(f"🔄 [连接尝试] 第 {attempt + 1}/{max_retries} 次尝试连接 ChromaDB...")
+                logger.info(f"📋 [配置信息] 持久化路径: {settings.CHROMADB_PERSISTENT_PATH}")
+                logger.info(f"📋 [配置信息] 服务器地址: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                logger.info(f"📋 [配置信息] 超时设置: 客户端={settings.CHROMADB_CLIENT_TIMEOUT}s, 服务器={settings.CHROMADB_SERVER_TIMEOUT}s")
                 
                 # 根据配置选择连接方式
                 if settings.CHROMADB_PERSISTENT_PATH:
                     # 使用持久化存储
+                    logger.info(f"🏠 [连接模式] 使用持久化存储模式")
                     self.client = chromadb.PersistentClient(
                         path=settings.CHROMADB_PERSISTENT_PATH,
                         settings=ChromaSettings(
@@ -85,20 +89,25 @@ class VectorStore:
                     )
                     logger.info(f"✅ [连接成功] 已连接到持久化 ChromaDB: {settings.CHROMADB_PERSISTENT_PATH}")
                 else:
-                    # 使用 HTTP 客户端，配置超时设置
-                    chroma_settings = ChromaSettings(
-                        anonymized_telemetry=False,
-                        chroma_client_timeout_seconds=settings.CHROMADB_CLIENT_TIMEOUT,
-                        chroma_server_timeout_seconds=settings.CHROMADB_SERVER_TIMEOUT
-                    )
+                    # 使用 HTTP 客户端
+                    logger.info(f"🌐 [连接模式] 使用HTTP客户端模式")
+                    logger.info(f"⚙️ [Settings配置] 正在创建ChromaSettings对象...")
                     
+                    # 注意：ChromaDB Settings 不支持 timeout 参数
+                    # 根据官方文档，HttpClient 也不直接支持 timeout 参数
+                    chroma_settings = ChromaSettings(
+                        anonymized_telemetry=False
+                    )
+                    logger.info(f"✅ [Settings创建] ChromaSettings对象创建成功")
+                    
+                    logger.info(f"🔌 [HttpClient创建] 正在创建HttpClient连接...")
                     self.client = chromadb.HttpClient(
                         host=settings.CHROMADB_HOST,
                         port=settings.CHROMADB_PORT,
                         settings=chroma_settings
                     )
                     logger.info(f"✅ [连接成功] 已连接到 ChromaDB 服务器: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
-                    logger.info(f"⏱️ [超时配置] 客户端超时: {settings.CHROMADB_CLIENT_TIMEOUT}s, 服务器超时: {settings.CHROMADB_SERVER_TIMEOUT}s")
+                    logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
                 
                 # 测试连接
                 try:
