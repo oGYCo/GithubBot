@@ -103,33 +103,71 @@ class VectorStore:
                     logger.info(f"🔌 [HttpClient创建] 正在创建HttpClient连接...")
                     logger.info(f"📋 [连接参数] Host: {settings.CHROMADB_HOST}, Port: {settings.CHROMADB_PORT}")
                     logger.info(f"📋 [连接参数] Settings: anonymized_telemetry=False")
+                    logger.info(f"🔗 [连接地址] http://{settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                    logger.info(f"⚙️ [ChromaSettings详情] {chroma_settings}")
                     
                     try:
+                        logger.info("🚀 [开始创建] 正在调用 chromadb.HttpClient()...")
                         self.client = chromadb.HttpClient(
                             host=settings.CHROMADB_HOST,
                             port=settings.CHROMADB_PORT,
                             settings=chroma_settings
                         )
                         logger.info(f"✅ [HttpClient创建成功] ChromaDB HttpClient 对象创建成功")
-                        logger.info(f"🔗 [连接地址] http://{settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
                         logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
+                        
+                        # 测试基础网络连接
+                        logger.info("🔍 [网络测试] 开始测试基础网络连接...")
+                        import socket
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(5)
+                        try:
+                            result = sock.connect_ex((settings.CHROMADB_HOST, settings.CHROMADB_PORT))
+                            if result == 0:
+                                logger.info(f"✅ [网络连接成功] Socket连接到 {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT} 成功")
+                            else:
+                                logger.warning(f"⚠️ [网络连接失败] Socket连接失败，错误代码: {result}")
+                        except Exception as sock_e:
+                            logger.error(f"❌ [网络测试失败] Socket连接测试失败: {sock_e}")
+                        finally:
+                            sock.close()
+                            
                     except Exception as client_error:
                         logger.error(f"❌ [HttpClient创建失败] 创建 ChromaDB HttpClient 时发生错误")
                         logger.error(f"🔍 [错误类型] {type(client_error).__name__}")
                         logger.error(f"🔍 [错误详情] {str(client_error)}")
+                        import traceback
+                        logger.error(f"🔍 [完整堆栈] {traceback.format_exc()}")
                         raise
                 
                 # 测试连接
                 logger.info(f"💓 [开始心跳检测] 正在测试 ChromaDB 连接...")
                 try:
+                    logger.info(f"🔄 [调用心跳] 正在调用 client.heartbeat() 方法...")
+                    
+                    import time
+                    start_time = time.time()
                     heartbeat_result = self.client.heartbeat()
-                    logger.info(f"💓 [心跳检测成功] ChromaDB 连接测试成功")
-                    logger.info(f"💓 [心跳结果] {heartbeat_result}")
+                    end_time = time.time()
+                    
+                    logger.info(f"💓 [心跳检测成功] ChromaDB 连接测试成功，耗时 {end_time - start_time:.2f}s")
+                    logger.info(f"💓 [心跳结果类型] {type(heartbeat_result)}")
+                    logger.info(f"💓 [心跳结果内容] {heartbeat_result}")
+                    
                 except Exception as heartbeat_error:
                     logger.error(f"❌ [心跳检测失败] ChromaDB 心跳检测失败")
                     logger.error(f"🔍 [心跳错误类型] {type(heartbeat_error).__name__}")
                     logger.error(f"🔍 [心跳错误详情] {str(heartbeat_error)}")
                     logger.error(f"🔍 [心跳错误完整信息] {repr(heartbeat_error)}")
+                    
+                    # 额外的超时错误诊断
+                    if "timeout" in str(heartbeat_error).lower() or "timed out" in str(heartbeat_error).lower():
+                        logger.error(f"⏰ [超时诊断] 检测到连接超时错误")
+                        logger.error(f"🎯 [目标地址] {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                        logger.error(f"💡 [建议] 请检查网络连接和ChromaDB服务器状态")
+                        
+                    import traceback
+                    logger.error(f"🔍 [完整堆栈] {traceback.format_exc()}")
                     # 心跳失败时抛出异常，触发重试机制
                     raise heartbeat_error
                 
