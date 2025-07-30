@@ -19,7 +19,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: github_bot_redis
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --ignore-warnings ARM64-COW-BUG
     volumes:
       - redis_data:/data
     ports:
@@ -30,7 +30,7 @@ services:
 
   # ChromaDB 向量数据库
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:1.0.15
     container_name: github_bot_chromadb
     environment:
       - CHROMA_SERVER_HOST=0.0.0.0

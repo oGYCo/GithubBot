@@ -72,10 +72,14 @@ class VectorStore:
         for attempt in range(max_retries):
             try:
                 logger.info(f"🔄 [连接尝试] 第 {attempt + 1}/{max_retries} 次尝试连接 ChromaDB...")
+                logger.info(f"📋 [配置信息] 持久化路径: {settings.CHROMADB_PERSISTENT_PATH}")
+                logger.info(f"📋 [配置信息] 服务器地址: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                logger.info(f"📋 [配置信息] 超时设置: 客户端={settings.CHROMADB_CLIENT_TIMEOUT}s, 服务器={settings.CHROMADB_SERVER_TIMEOUT}s")
                 
                 # 根据配置选择连接方式
                 if settings.CHROMADB_PERSISTENT_PATH:
                     # 使用持久化存储
+                    logger.info(f"🏠 [连接模式] 使用持久化存储模式")
                     self.client = chromadb.PersistentClient(
                         path=settings.CHROMADB_PERSISTENT_PATH,
                         settings=ChromaSettings(
@@ -85,27 +89,125 @@ class VectorStore:
                     )
                     logger.info(f"✅ [连接成功] 已连接到持久化 ChromaDB: {settings.CHROMADB_PERSISTENT_PATH}")
                 else:
-                    # 使用 HTTP 客户端，配置超时设置
+                    # 使用 HTTP 客户端
+                    logger.info(f"🌐 [连接模式] 使用HTTP客户端模式")
+                    logger.info(f"⚙️ [Settings配置] 正在创建ChromaSettings对象...")
+                    
+                    # 注意：ChromaDB Settings 不支持 timeout 参数
+                    # 根据官方文档，HttpClient 也不直接支持 timeout 参数
                     chroma_settings = ChromaSettings(
                         anonymized_telemetry=False,
-                        chroma_client_timeout_seconds=settings.CHROMADB_CLIENT_TIMEOUT,
-                        chroma_server_timeout_seconds=settings.CHROMADB_SERVER_TIMEOUT
+                        chroma_client_auth_provider=None,
+                        chroma_client_auth_credentials=None,
+                        chroma_server_authn_provider=None,
+                        chroma_server_authn_credentials=None
                     )
+                    logger.info(f"✅ [Settings创建] ChromaSettings对象创建成功")
                     
-                    self.client = chromadb.HttpClient(
-                        host=settings.CHROMADB_HOST,
-                        port=settings.CHROMADB_PORT,
-                        settings=chroma_settings
-                    )
-                    logger.info(f"✅ [连接成功] 已连接到 ChromaDB 服务器: {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
-                    logger.info(f"⏱️ [超时配置] 客户端超时: {settings.CHROMADB_CLIENT_TIMEOUT}s, 服务器超时: {settings.CHROMADB_SERVER_TIMEOUT}s")
+                    logger.info(f"🔌 [HttpClient创建] 正在创建HttpClient连接...")
+                    logger.info(f"📋 [连接参数] Host: {settings.CHROMADB_HOST}, Port: {settings.CHROMADB_PORT}")
+                    logger.info(f"📋 [连接参数] Settings: anonymized_telemetry=False")
+                    logger.info(f"🔗 [连接地址] http://{settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                    logger.info(f"⚙️ [ChromaSettings详情] {chroma_settings}")
+                    
+                    try:
+                        logger.info("🚀 [开始创建] 正在调用 chromadb.HttpClient()...")
+                        
+                        # 方法1: 尝试使用环境变量禁用认证
+                        import os
+                        os.environ['CHROMA_CLIENT_AUTH_PROVIDER'] = ''
+                        os.environ['CHROMA_SERVER_AUTHN_PROVIDER'] = ''
+                        
+                        try:
+                            # 尝试最简化的连接，不传递任何settings
+                            logger.info("🔧 [尝试1] 使用最简化HttpClient连接...")
+                            self.client = chromadb.HttpClient(
+                                host=settings.CHROMADB_HOST,
+                                port=settings.CHROMADB_PORT
+                            )
+                            logger.info("✅ [方法1成功] 最简化HttpClient连接成功")
+                        except Exception as simple_error:
+                            logger.warning(f"⚠️ [方法1失败] 最简化连接失败: {simple_error}")
+                            
+                            try:
+                                # 方法2: 尝试使用Client而不是HttpClient
+                                logger.info("🔧 [尝试2] 使用Client连接...")
+                                self.client = chromadb.Client()
+                                logger.info("✅ [方法2成功] Client连接成功")
+                            except Exception as client_error:
+                                logger.warning(f"⚠️ [方法2失败] Client连接失败: {client_error}")
+                                
+                                # 方法3: 使用完全禁用认证的设置
+                                logger.info("🔧 [尝试3] 使用完全禁用认证的HttpClient...")
+                                no_auth_settings = ChromaSettings(
+                                    anonymized_telemetry=False,
+                                    chroma_client_auth_provider=None,
+                                    chroma_client_auth_credentials=None,
+                                    chroma_server_authn_provider=None,
+                                    chroma_server_authn_credentials=None
+                                )
+                                self.client = chromadb.HttpClient(
+                                    host=settings.CHROMADB_HOST,
+                                    port=settings.CHROMADB_PORT,
+                                    settings=no_auth_settings
+                                )
+                        
+                        logger.info(f"✅ [HttpClient创建成功] ChromaDB HttpClient 对象创建成功")
+                        logger.info(f"ℹ️ [超时说明] ChromaDB不支持直接配置超时参数，使用默认HTTP超时设置")
+                        
+                        # 测试基础网络连接
+                        logger.info("🔍 [网络测试] 开始测试基础网络连接...")
+                        import socket
+                        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        sock.settimeout(5)
+                        try:
+                            result = sock.connect_ex((settings.CHROMADB_HOST, settings.CHROMADB_PORT))
+                            if result == 0:
+                                logger.info(f"✅ [网络连接成功] Socket连接到 {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT} 成功")
+                            else:
+                                logger.warning(f"⚠️ [网络连接失败] Socket连接失败，错误代码: {result}")
+                        except Exception as sock_e:
+                            logger.error(f"❌ [网络测试失败] Socket连接测试失败: {sock_e}")
+                        finally:
+                            sock.close()
+                            
+                    except Exception as client_error:
+                        logger.error(f"❌ [HttpClient创建失败] 创建 ChromaDB HttpClient 时发生错误")
+                        logger.error(f"🔍 [错误类型] {type(client_error).__name__}")
+                        logger.error(f"🔍 [错误详情] {str(client_error)}")
+                        import traceback
+                        logger.error(f"🔍 [完整堆栈] {traceback.format_exc()}")
+                        raise
                 
                 # 测试连接
+                logger.info(f"💓 [开始心跳检测] 正在测试 ChromaDB 连接...")
                 try:
-                    self.client.heartbeat()
-                    logger.info(f"💓 [心跳检测] ChromaDB 连接测试成功")
+                    logger.info(f"🔄 [调用心跳] 正在调用 client.heartbeat() 方法...")
+                    
+                    start_time = time.time()
+                    heartbeat_result = self.client.heartbeat()
+                    end_time = time.time()
+                    
+                    logger.info(f"💓 [心跳检测成功] ChromaDB 连接测试成功，耗时 {end_time - start_time:.2f}s")
+                    logger.info(f"💓 [心跳结果类型] {type(heartbeat_result)}")
+                    logger.info(f"💓 [心跳结果内容] {heartbeat_result}")
+                    
                 except Exception as heartbeat_error:
-                    logger.warning(f"⚠️ [心跳警告] ChromaDB 心跳检测失败，但连接可能仍然有效: {str(heartbeat_error)}")
+                    logger.error(f"❌ [心跳检测失败] ChromaDB 心跳检测失败")
+                    logger.error(f"🔍 [心跳错误类型] {type(heartbeat_error).__name__}")
+                    logger.error(f"🔍 [心跳错误详情] {str(heartbeat_error)}")
+                    logger.error(f"🔍 [心跳错误完整信息] {repr(heartbeat_error)}")
+                    
+                    # 额外的超时错误诊断
+                    if "timeout" in str(heartbeat_error).lower() or "timed out" in str(heartbeat_error).lower():
+                        logger.error(f"⏰ [超时诊断] 检测到连接超时错误")
+                        logger.error(f"🎯 [目标地址] {settings.CHROMADB_HOST}:{settings.CHROMADB_PORT}")
+                        logger.error(f"💡 [建议] 请检查网络连接和ChromaDB服务器状态")
+                        
+                    import traceback
+                    logger.error(f"🔍 [完整堆栈] {traceback.format_exc()}")
+                    # 心跳失败时抛出异常，触发重试机制
+                    raise heartbeat_error
                 
                 return  # 连接成功，退出重试循环
                 
