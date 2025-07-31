@@ -337,12 +337,10 @@ async def query_task_info(session_id: str):
         
         # 构建增强的任务信息响应
         enhanced_info = {
-            "task_id": session_id,
+            "session": session_id,
             "status": task_info.get("status", "UNKNOWN"),
             "ready": task_info.get("ready", False),
             "successful": task_info.get("successful"),
-            "created_at": None,  # 可以从数据库获取更多时间信息
-            "completed_at": None,
             "execution_info": {
                 "has_result": result is not None,
                 "result_type": type(result).__name__ if result else None,
