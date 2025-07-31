@@ -156,5 +156,5 @@ volumes:
 networks:
   github_bot_network:
     driver: bridge
-    external: true
+    external: false
     name: github_bot_network
