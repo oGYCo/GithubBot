@@ -15,8 +15,7 @@ try {
     Write-Host "🔍 检查 Docker 安装状态..." -ForegroundColor Yellow
     $null = docker --version
     Write-Host "✅ Docker 已安装" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "❌ Docker 未安装，请先安装 Docker Desktop" -ForegroundColor Red
     Write-Host "下载地址: https://www.docker.com/products/docker-desktop" -ForegroundColor Cyan
     Read-Host "按任意键退出"
@@ -29,14 +28,12 @@ try {
     $null = docker compose version
     $composeCmd = "docker compose"
     Write-Host "✅ 使用 Docker Compose (新版)" -ForegroundColor Green
-}
-catch {
+} catch {
     try {
         $null = docker-compose --version
         $composeCmd = "docker-compose"
         Write-Host "✅ 使用 Docker Compose (传统版)" -ForegroundColor Green
-    }
-    catch {
+    } catch {
         Write-Host "❌ 未检测到 Docker Compose，请先安装 Docker Compose" -ForegroundColor Red
         Read-Host "按任意键退出"
         exit 1
@@ -58,13 +55,26 @@ if (-not (Test-Path ".env")) {
     }
 }
 
+# 创建 Docker 网络（如果不存在）
+Write-Host "🌐 检查并创建 Docker 网络..." -ForegroundColor Yellow
+try {
+    $networkExists = docker network ls --filter name=github_bot_network --format "{{.Name}}" | Select-String -Pattern "^github_bot_network$"
+    if (-not $networkExists) {
+        docker network create github_bot_network
+        Write-Host "✅ Docker 网络 github_bot_network 创建成功" -ForegroundColor Green
+    } else {
+        Write-Host "✅ Docker 网络 github_bot_network 已存在" -ForegroundColor Green
+    }
+} catch {
+    Write-Host "⚠️  创建网络时出现警告，继续执行..." -ForegroundColor Yellow
+}
+
 # 构建并启动服务
 Write-Host "🐳 构建和启动 Docker 容器..." -ForegroundColor Yellow
 try {
     Invoke-Expression "$composeCmd up --build -d"
     Write-Host "✅ Docker 容器启动成功" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "❌ Docker 容器启动失败" -ForegroundColor Red
     Write-Host "错误信息: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "按任意键退出"
