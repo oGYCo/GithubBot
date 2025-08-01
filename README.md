@@ -166,7 +166,7 @@ chmod +x start.sh
 Build and start all services manually:
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 This command will start the API service, Celery worker, PostgreSQL, Redis, and ChromaDB.
@@ -176,7 +176,7 @@ This command will start the API service, Celery worker, PostgreSQL, Redis, and C
 Wait a moment for the services to initialize, then check if all containers are running correctly:
 
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 You should see the status of all services as `running` or `healthy`.
