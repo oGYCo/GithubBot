@@ -151,7 +151,7 @@ repoinsight_service/
 ```
 langbot/plugins/repoinsight_plugin/
 ├── __init__.py           # 插件主文件，定义指令和消息处理
-├── api_client.py         # 封装所有对 RepoInsight-Service 的 API 调用
+├── api_client.py         # 封装所有对 GithubBot 的 API 调用
 ├── config.py             # 【新】插件侧的配置文件
 └── session_manager.py    # 管理微信用户 ID 和分析任务 session_id 的映射
 ```

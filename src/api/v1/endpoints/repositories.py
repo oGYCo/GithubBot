@@ -242,46 +242,40 @@ async def cancel_analysis(session_id: str):
 @router.get("/query/status/{session_id}")
 async def query_status(session_id: str):
     """
-    Get the status and result of a query task
+    Get only the basic status information of a query task (without result data)
+    Returns: task status, progress info, and basic metadata - optimized for frequent polling
     """
     try:
         logger.info(f"📊 [查询状态] 收到查询状态请求 - 任务会话ID: {session_id}")
         
         logger.debug(f"🔍 [状态检查] 正在获取任务状态...")
         status = await task_queue.get_task_status(session_id)
-        result = await task_queue.get_query_result(session_id)
         
-        # 任务还在处理中
-        if result is None:
-            logger.info(f"⏳ [处理中] 任务仍在处理中 - 状态: {status}")
-            return {
-                "session_id": session_id,
-                "status": status.lower(),
-                "message": "Task is still being processed"
-            }
+        # 获取基本任务信息（不包含完整结果）
+        task_info = await task_queue.get_task_info(session_id)
         
-        # 检查任务是否失败
-        if isinstance(result, dict) and result.get("success") == False:
-            error_msg = result.get("error", "Unknown error")
-            logger.error(f"❌ [任务失败] 查询任务失败 - 错误: {error_msg}")
-            return {
-                "session_id": session_id,
-                "status": "failed",
-                "error": error_msg,
-                "message": "Task failed to complete"
-            }
-        
-        # 任务成功完成，返回QueryResponse结果
-        logger.info(f"✅ [任务完成] 查询任务成功完成")
-        if isinstance(result, dict) and "data" in result:
-            logger.debug(f"📊 [结果统计] 返回结果包含查询数据")
-        
-        return {
+        response = {
             "session_id": session_id,
-            "status": "completed",
-            "result": result,  # 这里包含完整的QueryResponse数据
-            "message": "Task completed successfully"
+            "status": status.lower(),
+            "ready": task_info.get("ready", False),
+            "successful": task_info.get("successful"),
+            "message": {
+                "PENDING": "Task is queued and waiting to be processed",
+                "STARTED": "Task is currently being processed", 
+                "SUCCESS": "Task completed successfully",
+                "FAILURE": "Task failed to complete",
+                "RETRY": "Task is being retried",
+                "REVOKED": "Task was cancelled"
+            }.get(status, "Task status unknown")
         }
+        
+        # 如果任务失败，包含错误信息但不包含完整结果
+        if status == "FAILURE" and task_info.get("error"):
+            response["error"] = task_info.get("error")
+            logger.error(f"❌ [任务失败] 查询任务失败 - 错误: {task_info.get('error')}")
+        
+        logger.info(f"📈 [状态响应] 任务状态: {status}, 是否就绪: {task_info.get('ready', False)}")
+        return response
         
     except Exception as e:
         logger.error(f"❌ [状态查询错误] 获取查询任务状态失败: {str(e)}")
@@ -290,38 +284,100 @@ async def query_status(session_id: str):
 @router.get("/query/result/{session_id}")
 async def query_result(session_id: str):
     """
-    Get the final result of a completed query task
+    Get only the final result data of a completed query task
+    Returns: the actual query response data (answer, retrieved_context, etc.) without status metadata
     """
     try:
+        logger.info(f"📄 [结果获取] 收到查询结果请求 - 任务会话ID: {session_id}")
+        
         result = await task_queue.get_query_result(session_id)
         
         if result is None:
-            raise HTTPException(status_code=404, detail="Task not found or still processing")
+            logger.warning(f"⚠️ [结果未找到] 任务结果不存在或仍在处理中 - 会话ID: {session_id}")
+            raise HTTPException(status_code=404, detail="Task result not found or still processing")
         
         # 检查任务是否失败
         if isinstance(result, dict) and result.get("success") == False:
+            error_msg = result.get('error', 'Unknown error')
+            logger.error(f"❌ [任务失败] 查询任务失败 - 错误: {error_msg}")
             raise HTTPException(
                 status_code=400, 
-                detail=f"Task failed: {result.get('error', 'Unknown error')}"
+                detail=f"Task failed: {error_msg}"
             )
         
-        # 返回完整的QueryResponse结果
-        return result
+        # 只返回实际的查询数据，去除包装层
+        if isinstance(result, dict) and "data" in result:
+            query_data = result["data"]
+            logger.info(f"✅ [结果返回] 成功返回查询数据 - 包含答案和上下文")
+            return query_data
+        else:
+            logger.info(f"✅ [结果返回] 成功返回查询结果")
+            return result
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ [结果获取错误] 获取查询结果失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving result: {str(e)}")
 
 @router.get("/query/info/{session_id}")
 async def query_task_info(session_id: str):
     """
-    Get comprehensive task information including status, result, and errors
+    Get comprehensive task information including status, result, timing, and debug info
+    Returns: complete task metadata with execution details - ideal for debugging and monitoring
     """
     try:
+        logger.info(f"🔍 [任务信息] 收到任务信息查询请求 - 任务会话ID: {session_id}")
+        
+        # 获取基础任务信息
         task_info = await task_queue.get_task_info(session_id)
-        return task_info
+        
+        # 获取完整结果（如果可用）
+        result = await task_queue.get_query_result(session_id)
+        
+        # 构建增强的任务信息响应
+        enhanced_info = {
+            "session": session_id,
+            "status": task_info.get("status", "UNKNOWN"),
+            "ready": task_info.get("ready", False),
+            "successful": task_info.get("successful"),
+            "execution_info": {
+                "has_result": result is not None,
+                "result_type": type(result).__name__ if result else None,
+                "error": task_info.get("error"),
+                "traceback": task_info.get("traceback")
+            }
+        }
+        
+        # 如果有结果，添加结果摘要信息
+        if result and isinstance(result, dict):
+            if result.get("success") and "data" in result:
+                data = result["data"]
+                enhanced_info["result_summary"] = {
+                    "success": True,
+                    "has_answer": "answer" in data if isinstance(data, dict) else False,
+                    "context_chunks": len(data.get("retrieved_context", [])) if isinstance(data, dict) else 0,
+                    "generation_mode": data.get("generation_mode") if isinstance(data, dict) else None,
+                    "timing": {
+                        "retrieval_time": data.get("retrieval_time") if isinstance(data, dict) else None,
+                        "generation_time": data.get("generation_time") if isinstance(data, dict) else None,
+                        "total_time": data.get("total_time") if isinstance(data, dict) else None
+                    }
+                }
+            else:
+                enhanced_info["result_summary"] = {
+                    "success": False,
+                    "error": result.get("error", "Unknown error")
+                }
+        
+        # 如果需要完整结果，可以选择性包含
+        # enhanced_info["full_result"] = result  # 可选：包含完整结果
+        
+        logger.info(f"📊 [信息汇总] 任务状态: {enhanced_info['status']}, 是否成功: {enhanced_info['successful']}, 有结果: {enhanced_info['execution_info']['has_result']}")
+        return enhanced_info
+        
     except Exception as e:
+        logger.error(f"❌ [信息获取错误] 获取任务信息失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving task info: {str(e)}")
 
 @router.post("/cache/clear")
