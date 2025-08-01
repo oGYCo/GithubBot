@@ -167,7 +167,7 @@ async def query(req: QueryRequest):
     logger.info(f"🎉 [查询响应] 查询请求处理完成 - 任务会话ID: {session_id}")
     return response
 
-@router.post("/analyze/{session_id}/cancel")
+@router.delete("/analyze/{session_id}")
 async def cancel_analysis(session_id: str):
     """
     停止仓库分析任务
