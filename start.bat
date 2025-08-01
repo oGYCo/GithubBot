@@ -40,6 +40,21 @@ if not exist ".env" (
     )
 )
 
+REM 创建 Docker 网络（如果不存在）
+echo 🌐 检查并创建 Docker 网络...
+docker network ls --filter name=github_bot_network --format "{{.Name}}" | findstr /x "github_bot_network" >nul 2>&1
+if errorlevel 1 (
+    docker network create github_bot_network >nul 2>&1
+    if errorlevel 1 (
+        echo ⚠️  创建网络时出现警告，继续执行...
+    ) else (
+        echo ✅ Docker 网络 github_bot_network 创建成功
+    )
+) else (
+    echo ✅ Docker 网络 github_bot_network 已存在
+)
+echo.
+
 REM 构建并启动服务
 echo 🐳 构建和启动 Docker 容器...
 %COMPOSE_CMD% up --build -d
