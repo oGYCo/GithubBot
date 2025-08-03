@@ -181,6 +181,86 @@ docker compose ps
 
 You should see the status of all services as `running` or `healthy`.
 
+### 6. Access the Services
+
+Once all services are running, you can access:
+
+- **API Documentation**: http://localhost:8000/docs
+- **API Root**: http://localhost:8000
+- **Flower (Task Monitor)**: http://localhost:5555
+- **Health Check**: http://localhost:8000/health
+
+## 📊 Service Monitor
+
+| Service | Port | Monitor URL | Description |
+|---------|------|-------------|-------------|
+| API Service | 8000 | http://localhost:8000/health | Main API interface |
+| API Documentation | 8000 | http://localhost:8000/docs | Swagger documentation |
+| Flower | 5555 | http://localhost:5555 | Task queue monitoring |
+| PostgreSQL | 5432 | - | Database service |
+| Redis | 6380 | - | Cache and message queue |
+| ChromaDB | 8001 | - | Vector database (host port, container internal 8000) |
+
+## 🛑 Stop Services
+
+```bash
+docker compose down
+```
+
+## 🔄 Restart Services
+
+```bash
+docker compose restart
+```
+
+## 📝 View Logs
+
+```bash
+# View all service logs
+docker compose logs -f
+
+# View specific service logs
+docker compose logs -f api
+docker compose logs -f worker
+```
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **API keys not set**
+   - Ensure at least one LLM API key is set in the `.env` file
+   - Recommended: Set `OPENAI_API_KEY`
+
+2. **Port conflicts**
+   - Check if ports 8000, 5555, 5432, 6380, 8001 are occupied
+   - Use `netstat -an | grep :8000` to check port status
+
+3. **Docker not running**
+   - Ensure Docker Desktop is running
+   - Check Docker system tray icon
+
+4. **Memory issues**
+   - Ensure system has enough memory to run all containers
+   - Recommended: At least 4GB available memory
+
+5. **Network connection issues**
+   - Ensure access to Docker Hub
+   - May need Docker registry mirror configuration in China
+
+### Windows Specific Issues
+
+1. **Docker Desktop not started**
+   - Ensure Docker Desktop is running
+   - Check Docker icon in system tray
+
+2. **WSL2 not enabled**
+   - Docker Desktop requires WSL2 support
+   - Refer to [WSL2 installation guide](https://docs.microsoft.com/en-us/windows/wsl/install)
+
+3. **Firewall blocking**
+   - Ensure Windows Firewall allows Docker network access
+
 ## 📖 API Usage Example
 
 Once the services are running, the API will be available at `http://localhost:8000`. You can access the interactive API documentation (Swagger UI) at `http://localhost:8000/docs`.
@@ -255,11 +335,13 @@ Once the repository status changes to `SUCCESS`, you can start asking questions.
 
 ```bash
 curl -X 'POST' \
-  'http://localhost:8000/api/v1/repositories/{your_session_id}/query' \
+  'http://localhost:8000/api/v1/repos/query' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
-  "query": "How to handle CORS in FastAPI?"
+  "session_id": "your-session-id",
+  "question": "How to handle CORS in FastAPI?",
+  "generation_mode": "service"
 }'
 ```
 
@@ -267,19 +349,92 @@ curl -X 'POST' \
 
 You can customize almost every aspect of the application in the `.env` file.
 
+### Core Configuration
+
 | Variable Name | Description | Default Value |
 | :--- | :--- | :--- |
+| `APP_NAME` | Application name | `"GithubBot"` |
+| `APP_VERSION` | Application version | `"0.1.0"` |
+| `DEBUG` | Debug mode | `False` |
+| `LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL) | `"INFO"` |
+| `API_KEY` | API access key (optional) | `""` |
+| `CORS_ORIGINS` | Allowed CORS origins (comma-separated) | `"http://localhost:3000,http://127.0.0.1:3000"` |
+
+### Service Ports
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `API_HOST` | API host address | `"0.0.0.0"` |
 | `API_PORT` | Port for the API service to listen on | `8000` |
-| `POSTGRES_USER` | PostgreSQL username | `user` |
-| `POSTGRES_PASSWORD` | PostgreSQL password | `password` |
-| `REDIS_HOST` | Redis service address | `redis` |
-| `OPENAI_API_KEY` | OpenAI API key | `""` |
+
+### Database Configuration (PostgreSQL)
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | Complete PostgreSQL connection URL | `"postgresql+psycopg2://user:password@postgres:5432/repoinsight"` |
+| `POSTGRES_USER` | PostgreSQL username | `"user"` |
+| `POSTGRES_PASSWORD` | PostgreSQL password | `"password"` |
+| `POSTGRES_DB` | PostgreSQL database name | `"repoinsight"` |
+| `POSTGRES_HOST` | PostgreSQL host | `"postgres"` |
+| `POSTGRES_PORT` | PostgreSQL port | `5432` |
+
+### Redis Configuration
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `REDIS_URL` | Complete Redis connection URL | `"redis://redis:6379/0"` |
+| `REDIS_HOST` | Redis service address | `"redis"` |
+| `REDIS_PORT` | Redis port | `6379` |
+
+### ChromaDB Configuration
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `CHROMADB_HOST` | ChromaDB host | `"chromadb"` |
+| `CHROMADB_PORT` | ChromaDB port | `8000` |
+| `CHROMADB_CLIENT_TIMEOUT` | ChromaDB client timeout (seconds) | `120` |
+| `CHROMADB_SERVER_TIMEOUT` | ChromaDB server timeout (seconds) | `120` |
+| `CHROMADB_MAX_RETRIES` | ChromaDB connection max retries | `5` |
+| `CHROMADB_RETRY_DELAY` | ChromaDB connection retry delay (seconds) | `3` |
+
+### LLM and Embedding Model API Keys
+
+| Variable Name | Description |
+| :--- | :--- |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `COHERE_API_KEY` | Cohere API key |
+| `GOOGLE_API_KEY` | Google API key |
+| `HUGGINGFACE_HUB_API_TOKEN` | HuggingFace API token |
+| `MISTRAL_API_KEY` | Mistral API key |
+| `QWEN_API_KEY` | Qwen API key |
+| `DASHSCOPE_API_KEY` | DashScope API key |
+
+### Processing Configuration
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `GIT_CLONE_DIR` | Directory for Git repository clones | `"/repo_clones"` |
 | `CHUNK_SIZE` | Maximum size of text chunks | `1000` |
 | `CHUNK_OVERLAP` | Overlap size between text chunks | `200` |
+| `EMBEDDING_BATCH_SIZE` | Batch size for embedding processing | `32` |
 | `VECTOR_SEARCH_TOP_K` | Number of documents from vector search | `10` |
 | `BM25_SEARCH_TOP_K` | Number of documents from BM25 search | `10` |
-| `ALLOWED_FILE_EXTENSIONS` | List of allowed file extensions | (see `config.py`) |
-| `EXCLUDED_DIRECTORIES` | List of directories to ignore | `.git,node_modules,...` |
+
+### File Processing
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `ALLOWED_FILE_EXTENSIONS` | List of allowed file extensions (JSON array) | `[".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".scala", ".md", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".sh", ".sql", ".html", ".css", ".vue", "dockerfile", "makefile", "readme", "license", "changelog"]` |
+| `EXCLUDED_DIRECTORIES` | List of directories to exclude (JSON array) | `[".git", "node_modules", "dist", "build", "venv", ".venv", "target"]` |
+
+### Celery Configuration
+
+| Variable Name | Description | Default Value |
+| :--- | :--- | :--- |
+| `CELERY_BROKER_URL` | Celery broker URL | `"redis://redis:6379/0"` |
 
 ## 🤝 Contributing
 

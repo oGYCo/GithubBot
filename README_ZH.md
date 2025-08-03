@@ -121,6 +121,10 @@ cd GithubBot
 
 项目通过 `.env` 文件管理敏感信息和配置。 **请注意：项目中已经包含了 `.env.example` 文件，您需要手动创建 `.env` 文件。**
 
+```bash
+cp .env.example .env
+```
+
 然后，编辑 `.env` 文件，至少填入您的 OpenAI API 密钥：
 
 ```dotenv
@@ -136,23 +140,124 @@ OPENAI_API_KEY="sk-..."
 
 ### 4. 启动服务
 
-使用 Docker Compose 一键构建并启动所有服务：
+#### 选项A: 一键启动 (推荐)
+
+**Linux/macOS:**
+```bash
+chmod +x start.sh
+./start.sh
+```
+
+**Windows:**
+- **方法1 (批处理文件)**: 双击 `start.bat` 或在命令提示符中运行:
+  ```cmd
+  start.bat
+  ```
+
+- **方法2 (PowerShell)**: 右击 `start.ps1` → "用PowerShell运行" 或在PowerShell中运行:
+  ```powershell
+  .\start.ps1
+  ```
+
+#### 选项B: 手动Docker Compose
+
+手动构建并启动所有服务:
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 该命令会启动 API 服务、Celery Worker、PostgreSQL、Redis 和 ChromaDB。
 
 ### 5. 检查状态
 
-等待片刻，然后检查所有容器是否正常运行：
+等待片刻让服务初始化，然后检查所有容器是否正常运行：
 
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 您应该能看到所有服务的状态为 `running` 或 `healthy`。
+
+### 6. 访问服务
+
+所有服务运行后，您可以访问：
+
+- **API 文档**: http://localhost:8000/docs
+- **API 根路径**: http://localhost:8000
+- **Flower (任务监控)**: http://localhost:5555
+- **健康检查**: http://localhost:8000/health
+
+## 📊 服务监控
+
+| 服务 | 端口 | 监控 URL | 说明 |
+|------|------|----------|------|
+| API 服务 | 8000 | http://localhost:8000/health | 主要 API 接口 |
+| API 文档 | 8000 | http://localhost:8000/docs | Swagger 文档 |
+| Flower | 5555 | http://localhost:5555 | 任务队列监控 |
+| PostgreSQL | 5432 | - | 数据库服务 |
+| Redis | 6380 | - | 缓存和消息队列 |
+| ChromaDB | 8001 | - | 向量数据库 (主机端口，容器内部8000) |
+
+## 🛑 停止服务
+
+```bash
+docker compose down
+```
+
+## 🔄 重启服务
+
+```bash
+docker compose restart
+```
+
+## 📝 查看日志
+
+```bash
+# 查看所有服务日志
+docker compose logs -f
+
+# 查看特定服务日志
+docker compose logs -f api
+docker compose logs -f worker
+```
+
+## 🔧 常见问题
+
+### 通用问题
+
+1. **API 密钥未设置**
+   - 确保 `.env` 文件中至少设置了一个 LLM API 密钥
+   - 推荐设置 `OPENAI_API_KEY`
+
+2. **端口冲突**
+   - 检查端口 8000、5555、5432、6380、8001 是否被占用
+   - 使用 `netstat -an | grep :8000` 检查端口状态
+
+3. **Docker 未运行**
+   - 确保 Docker Desktop 正在运行
+   - 检查系统托盘中的 Docker 图标
+
+4. **内存不足**
+   - 确保系统有足够的内存运行所有容器
+   - 推荐至少 4GB 可用内存
+
+5. **网络连接问题**
+   - 确保能够访问 Docker Hub
+   - 在中国大陆可能需要配置 Docker 镜像加速器
+
+### Windows 特有问题
+
+1. **Docker Desktop 未启动**
+   - 确保 Docker Desktop 正在运行
+   - 检查系统托盘中的 Docker 图标
+
+2. **WSL2 未启用**
+   - Docker Desktop 需要 WSL2 支持
+   - 参考 [WSL2 安装指南](https://docs.microsoft.com/en-us/windows/wsl/install)
+
+3. **防火墙阻止**
+   - 确保 Windows 防火墙允许 Docker 网络访问
 
 ## 📖 API 使用示例
 
@@ -197,6 +302,46 @@ curl -X 'POST' \
 ### 2. 查询分析状态
 
 使用上一步返回的 `session_id` 来检查仓库的分析进度。
+
+- **URL**: `/api/v1/repos/status/{session_id}`
+- **Method**: `GET`
+
+### 3. 与仓库对话
+
+一旦仓库状态变为 `SUCCESS`，您就可以开始提问了。
+
+- **URL**: `/api/v1/repos/query`
+- **Method**: `POST`
+- **Body**:
+
+```json
+{
+  "session_id": "your-session-id",
+  "question": "如何在 FastAPI 中处理 CORS？",
+  "generation_mode": "service",
+  "llm_config": {
+    "provider": "openai",
+    "model_name": "gpt-4",
+    "api_key": "your-openai-api-key",
+    "temperature": 0.7,
+    "max_tokens": 1000
+  }
+}
+```
+
+**示例 (使用 cURL):**
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8000/api/v1/repos/query' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "session_id": "your-session-id",
+  "question": "如何在 FastAPI 中处理 CORS？",
+  "generation_mode": "service"
+}'
+```
 
 - **URL**: `/api/v1/repos/status/{session_id}`
 - **Method**: `GET`
@@ -249,29 +394,105 @@ curl -X 'POST' \
 
 您可以在 `.env` 文件中自定义应用的几乎所有方面。
 
+### 核心配置
+
 | 变量名 | 描述 | 默认值 |
 | :--- | :--- | :--- |
-| `API_PORT` | API 服务监听的端口 | `8000` |
-| `POSTGRES_USER` | PostgreSQL 用户名 | `user` |
-| `POSTGRES_PASSWORD` | PostgreSQL 密码 | `password` |
-| `REDIS_HOST` | Redis 服务地址 | `redis` |
-| `OPENAI_API_KEY` | OpenAI API 密钥 | `""` |
-| `CHUNK_SIZE` | 文本分块的最大尺寸 | `1000` |
-| `CHUNK_OVERLAP` | 文本分块之间的重叠尺寸 | `200` |
-| `VECTOR_SEARCH_TOP_K` | 向量搜索返回的文档数 | `10` |
+| `APP_NAME` | 应用名称 | `"GithubBot"` |
+| `APP_VERSION` | 应用版本 | `"0.1.0"` |
+| `DEBUG` | 调试模式 | `False` |
+| `LOG_LEVEL` | 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL) | `"INFO"` |
+| `API_KEY` | API 访问密钥 (可选) | `""` |
+| `CORS_ORIGINS` | 允许的跨域请求源 (逗号分隔) | `"http://localhost:3000,http://127.0.0.1:3000"` |
 | `BM25_SEARCH_TOP_K` | BM25 搜索返回的文档数 | `10` |
 | `ALLOWED_FILE_EXTENSIONS` | 允许处理的文件扩展名列表 | (见 `config.py`) |
 | `EXCLUDED_DIRECTORIES` | 忽略的目录列表 | `.git,node_modules,...` |
 
+### 服务端口
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `API_HOST` | API 主机地址 | `"0.0.0.0"` |
+| `API_PORT` | API 服务监听的端口 | `8000` |
+
+### 数据库配置 (PostgreSQL)
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | 完整的 PostgreSQL 连接 URL | `"postgresql+psycopg2://user:password@postgres:5432/repoinsight"` |
+| `POSTGRES_USER` | PostgreSQL 用户名 | `"user"` |
+| `POSTGRES_PASSWORD` | PostgreSQL 密码 | `"password"` |
+| `POSTGRES_DB` | PostgreSQL 数据库名 | `"repoinsight"` |
+| `POSTGRES_HOST` | PostgreSQL 主机 | `"postgres"` |
+| `POSTGRES_PORT` | PostgreSQL 端口 | `5432` |
+
+### Redis 配置
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `REDIS_URL` | 完整的 Redis 连接 URL | `"redis://redis:6379/0"` |
+| `REDIS_HOST` | Redis 服务地址 | `"redis"` |
+| `REDIS_PORT` | Redis 端口 | `6379` |
+
+### ChromaDB 配置
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `CHROMADB_HOST` | ChromaDB 主机 | `"chromadb"` |
+| `CHROMADB_PORT` | ChromaDB 端口 | `8000` |
+| `CHROMADB_CLIENT_TIMEOUT` | ChromaDB 客户端超时时间 (秒) | `120` |
+| `CHROMADB_SERVER_TIMEOUT` | ChromaDB 服务器超时时间 (秒) | `120` |
+| `CHROMADB_MAX_RETRIES` | ChromaDB 连接最大重试次数 | `5` |
+| `CHROMADB_RETRY_DELAY` | ChromaDB 连接重试延迟 (秒) | `3` |
+
+### LLM 和 Embedding 模型 API Keys
+
+| 变量名 | 描述 |
+| :--- | :--- |
+| `OPENAI_API_KEY` | OpenAI API 密钥 |
+| `AZURE_OPENAI_API_KEY` | Azure OpenAI API 密钥 |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI 端点 |
+| `ANTHROPIC_API_KEY` | Anthropic API 密钥 |
+| `COHERE_API_KEY` | Cohere API 密钥 |
+| `GOOGLE_API_KEY` | Google API 密钥 |
+| `HUGGINGFACE_HUB_API_TOKEN` | HuggingFace API 令牌 |
+| `MISTRAL_API_KEY` | Mistral API 密钥 |
+| `QWEN_API_KEY` | Qwen API 密钥 |
+| `DASHSCOPE_API_KEY` | DashScope API 密钥 |
+
+### 处理配置
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `GIT_CLONE_DIR` | Git 仓库克隆目录 | `"/repo_clones"` |
+| `CHUNK_SIZE` | 文本分块的最大尺寸 | `1000` |
+| `CHUNK_OVERLAP` | 文本分块之间的重叠尺寸 | `200` |
+| `EMBEDDING_BATCH_SIZE` | 嵌入处理批次大小 | `32` |
+| `VECTOR_SEARCH_TOP_K` | 向量搜索返回的文档数 | `10` |
+| `BM25_SEARCH_TOP_K` | BM25 搜索返回的文档数 | `10` |
+
+### 文件处理
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `ALLOWED_FILE_EXTENSIONS` | 允许的文件扩展名列表 (JSON 数组) | `[".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".scala", ".md", ".txt", ".rst", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".sh", ".sql", ".html", ".css", ".vue", "dockerfile", "makefile", "readme", "license", "changelog"]` |
+| `EXCLUDED_DIRECTORIES` | 排除的目录列表 (JSON 数组) | `[".git", "node_modules", "dist", "build", "venv", ".venv", "target"]` |
+
+### Celery 配置
+
+| 变量名 | 描述 | 默认值 |
+| :--- | :--- | :--- |
+| `CELERY_BROKER_URL` | Celery 代理 URL | `"redis://redis:6379/0"` |
+
 ## 🤝 贡献
 
-我们欢迎任何形式的贡献！无论是报告 Bug、提交功能请求还是直接贡献代码。
+欢迎各种形式的贡献！无论是报告 bug、提交功能请求还是贡献代码。
 
-1.  Fork 本仓库
+1.  Fork 项目
 2.  创建您的功能分支 (`git checkout -b feature/AmazingFeature`)
 3.  提交您的更改 (`git commit -m 'Add some AmazingFeature'`)
 4.  推送到分支 (`git push origin feature/AmazingFeature`)
-5.  开启一个 Pull Request
+5.  提交 Pull Request
 
 ## 📄 许可证
 

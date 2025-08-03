@@ -167,7 +167,7 @@ async def query(req: QueryRequest):
     logger.info(f"🎉 [查询响应] 查询请求处理完成 - 任务会话ID: {session_id}")
     return response
 
-@router.post("/analyze/{session_id}/cancel")
+@router.delete("/analyze/{session_id}")
 async def cancel_analysis(session_id: str):
     """
     停止仓库分析任务
@@ -380,7 +380,7 @@ async def query_task_info(session_id: str):
         logger.error(f"❌ [信息获取错误] 获取任务信息失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving task info: {str(e)}")
 
-@router.post("/cache/clear")
+@router.delete("/cache")
 async def clear_cache():
     """
     Clear BM25 cache to apply improved tokenization and file name matching logic
