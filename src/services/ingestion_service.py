@@ -89,6 +89,14 @@ class IngestionService:
                     logger.info(f"📦 [Collection已存在] 会话ID: {session_id} - 仓库 {repo_identifier} 已分析过，跳过重复分析")
                     self._update_task_progress(task_instance, 20, "发现已存在的Collection，跳过重复分析")
                     
+                    # 确保会话中也设置了仓库标识符（向后兼容）
+                    try:
+                        logger.info(f"📋 [补充信息] 会话ID: {session_id} - 补充设置仓库信息")
+                        owner, repo_name = self.git_helper.extract_repo_info(repo_url)
+                        self._update_session_repo_info(db, session_id, repo_name, owner, repo_identifier)
+                    except Exception as e:
+                        logger.warning(f"⚠️ [信息更新] 会话ID: {session_id} - 仓库信息更新失败: {e}")
+                    
                     # 检查Collection中的文档数量
                     doc_count = vector_store.count_documents_in_repository_collection(repo_identifier)
                     logger.info(f"📊 [数据统计] 会话ID: {session_id} - 仓库 {repo_identifier} 已有 {doc_count} 个文档块")
@@ -123,8 +131,8 @@ class IngestionService:
 
                 logger.info(f"📋 [仓库信息] 会话ID: {session_id} - 解析仓库信息")
                 owner, repo_name = self.git_helper.extract_repo_info(repo_url)
-                self._update_session_repo_info(db, session_id, repo_name, owner)
-                logger.info(f"📝 [仓库详情] 会话ID: {session_id} - 仓库: {owner}/{repo_name}")
+                self._update_session_repo_info(db, session_id, repo_name, owner, repo_identifier)
+                logger.info(f"📝 [仓库详情] 会话ID: {session_id} - 仓库: {owner}/{repo_name}, 标识符: {repo_identifier}")
                 self._update_task_progress(task_instance, 35, "仓库信息解析完成")
             except Exception as e:
                 logger.error(f"❌ [关键失败] 会话ID: {session_id} - 仓库克隆或信息解析失败: {e}")
@@ -600,7 +608,8 @@ class IngestionService:
             db: Session,
             session_id: str,
             repo_name: str,
-            repo_owner: str
+            repo_owner: str,
+            repo_identifier: str
     ):
         """更新会话仓库信息"""
         try:
@@ -611,7 +620,9 @@ class IngestionService:
             if session:
                 session.repository_name = repo_name
                 session.repository_owner = repo_owner
+                session.repository_identifier = repo_identifier
                 db.commit()
+                logger.info(f"✅ [数据库更新] 会话ID: {session_id} - 仓库信息已更新: {repo_owner}/{repo_name} -> {repo_identifier}")
 
         except Exception as e:
             logger.error(f"更新会话仓库信息失败: {str(e)}")
