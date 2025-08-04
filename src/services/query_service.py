@@ -6,6 +6,7 @@
 
 import time
 import logging
+import re
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -13,7 +14,8 @@ from rank_bm25 import BM25Okapi
 
 from ..core.config import settings
 from ..db.session import get_db_session
-from ..db.models import AnalysisSession, QueryLog, TaskStatus
+from ..db.models import AnalysisSession, QueryLog, TaskStatus, Repository
+from ..utils.git_helper import GitHelper
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
 from ..services.llm_manager import LLMManager, LLMConfig
 from ..services.vector_store import get_vector_store
@@ -31,18 +33,19 @@ class QueryService:
     def __init__(self):
         self._bm25_cache = {}  # 缓存 BM25 索引
         self._documents_cache = {}  # 缓存文档内容
+        self.git_helper = GitHelper()  # Git助手实例
     
-    def clear_cache(self, session_id: str = None):
+    def clear_cache(self, identifier: str = None):
         """
         清除BM25缓存
         
         Args:
-            session_id: 指定会话ID，如果为None则清除所有缓存
+            identifier: 指定会话ID或仓库标识符，如果为None则清除所有缓存
         """
-        if session_id:
-            self._bm25_cache.pop(session_id, None)
-            self._documents_cache.pop(session_id, None)
-            logger.info(f"🧹 [缓存清除] 已清除会话 {session_id} 的BM25缓存")
+        if identifier:
+            self._bm25_cache.pop(identifier, None)
+            self._documents_cache.pop(identifier, None)
+            logger.info(f"🧹 [缓存清除] 已清除标识符 {identifier} 的BM25缓存")
         else:
             self._bm25_cache.clear()
             self._documents_cache.clear()
@@ -78,27 +81,29 @@ class QueryService:
                 else:
                     logger.info(f"🔍 [DEBUG] - provider 没有 .value 属性")
             
-            # 验证会话
-            session = self._validate_session(db, request.session_id)
-            if not session:
+            # 验证会话或仓库
+            validation_result = self._validate_session_or_repository(db, request.session_id)
+            if not validation_result:
                 return QueryResponse(
-                    answer="会话不存在或分析未完成",
+                    answer="会话不存在或分析未完成，或者仓库URL无效",
                     generation_mode=request.generation_mode
                 )
+            
+            session, repository_identifier = validation_result
 
-            logger.info(f"🚀 [查询开始] 会话ID: {request.session_id} - 问题: {request.question[:100]}{'...' if len(request.question) > 100 else ''}")
-            logger.info(f"⚙️ [查询配置] 会话ID: {request.session_id} - 生成模式: {request.generation_mode}")
+            logger.info(f"🚀 [查询开始] 仓库: {repository_identifier} - 问题: {request.question[:100]}{'...' if len(request.question) > 100 else ''}")
+            logger.info(f"⚙️ [查询配置] 仓库: {repository_identifier} - 生成模式: {request.generation_mode}")
             
             # 执行混合检索
-            logger.info(f"🔍 [检索阶段] 会话ID: {request.session_id} - 开始执行混合检索")
+            logger.info(f"🔍 [检索阶段] 仓库: {repository_identifier} - 开始执行混合检索")
             retrieval_start = time.time()
             retrieved_chunks = self._hybrid_retrieval(
-                session.session_id,
+                repository_identifier,
                 session.embedding_config,
                 request.question
             )
             retrieval_time = int((time.time() - retrieval_start) * 1000)
-            logger.info(f"✅ [检索完成] 会话ID: {request.session_id} - 检索耗时: {retrieval_time}ms, 获得 {len(retrieved_chunks)} 个上下文")
+            logger.info(f"✅ [检索完成] 仓库: {repository_identifier} - 检索耗时: {retrieval_time}ms, 获得 {len(retrieved_chunks)} 个上下文")
 
             # 准备响应
             response = QueryResponse(
@@ -110,7 +115,7 @@ class QueryService:
             # 根据生成模式处理
             if request.generation_mode == "service" and request.llm_config:
                 # 服务端生成答案
-                logger.info(f"🤖 [生成阶段] 会话ID: {request.session_id} - 开始使用LLM生成答案")
+                logger.info(f"🤖 [生成阶段] 仓库: {repository_identifier} - 开始使用LLM生成答案")
                 generation_start = time.time()
                 answer = self._generate_answer(
                     request.question,
@@ -118,15 +123,15 @@ class QueryService:
                     request.llm_config
                 )
                 generation_time = int((time.time() - generation_start) * 1000)
-                logger.info(f"✅ [生成完成] 会话ID: {request.session_id} - 生成耗时: {generation_time}ms, 答案长度: {len(answer)} 字符")
+                logger.info(f"✅ [生成完成] 仓库: {repository_identifier} - 生成耗时: {generation_time}ms, 答案长度: {len(answer)} 字符")
 
                 response.answer = answer
                 response.generation_time = generation_time
             else:
-                logger.info(f"📤 [插件模式] 会话ID: {request.session_id} - 仅返回检索上下文，不生成答案")
+                logger.info(f"📤 [插件模式] 仓库: {repository_identifier} - 仅返回检索上下文，不生成答案")
 
             response.total_time = int((time.time() - start_time) * 1000)
-            logger.info(f"🎉 [查询完成] 会话ID: {request.session_id} - 总耗时: {response.total_time}ms")
+            logger.info(f"🎉 [查询完成] 仓库: {repository_identifier} - 总耗时: {response.total_time}ms")
 
             # 记录查询日志
             self._log_query(
@@ -146,6 +151,72 @@ class QueryService:
         finally:
             if db:
                 db.close()
+
+    def _validate_session_or_repository(self, db: Session, session_id: str) -> Optional[Tuple[AnalysisSession, str]]:
+        """
+        验证会话或仓库URL，支持智能识别
+
+        Args:
+            db: 数据库会话
+            session_id: 会话ID或仓库URL
+
+        Returns:
+            Optional[Tuple[AnalysisSession, str]]: (会话对象, 仓库标识符) 或 None
+        """
+        # 首先尝试按会话ID查找
+        session = db.query(AnalysisSession).filter(
+            AnalysisSession.session_id == session_id
+        ).first()
+        
+        if session and session.status == TaskStatus.SUCCESS:
+            # 生成仓库标识符
+            repo_identifier = self.git_helper.generate_repository_identifier(session.repository_url)
+            logger.info(f"✅ [会话验证] 找到有效会话: {session_id} -> 仓库: {repo_identifier}")
+            return session, repo_identifier
+
+        # 尝试将输入作为仓库URL处理
+        if self._is_likely_repository_url(session_id):
+            repo_identifier = self.git_helper.generate_repository_identifier(session_id)
+            logger.info(f"🔍 [仓库URL识别] 输入识别为仓库URL: {session_id} -> 标识符: {repo_identifier}")
+            
+            # 查找基于仓库标识符的任何成功会话
+            session = db.query(AnalysisSession).filter(
+                AnalysisSession.repository_identifier == repo_identifier,
+                AnalysisSession.status == TaskStatus.SUCCESS
+            ).first()
+            
+            if session:
+                logger.info(f"✅ [仓库匹配] 找到基于仓库的有效会话: {session.session_id}")
+                return session, repo_identifier
+            else:
+                logger.warning(f"⚠️ [仓库未分析] 仓库 {session_id} 尚未成功分析")
+                return None
+
+        # 都不匹配
+        logger.warning(f"⚠️ [验证失败] 无法验证输入: {session_id}")
+        return None
+
+    def _is_likely_repository_url(self, text: str) -> bool:
+        """
+        判断文本是否可能是仓库URL
+        
+        Args:
+            text: 待检查的文本
+            
+        Returns:
+            bool: 是否可能是仓库URL
+        """
+        # 简单的URL模式匹配
+        url_patterns = [
+            r'^https?://github\.com/.+/.+',
+            r'^github\.com/.+/.+',
+            r'^.+/.+\.git$'
+        ]
+        
+        for pattern in url_patterns:
+            if re.match(pattern, text):
+                return True
+        return False
 
     def _validate_session(self, db: Session, session_id: str) -> Optional[AnalysisSession]:
         """
@@ -174,7 +245,7 @@ class QueryService:
 
     def _hybrid_retrieval(
             self,
-            session_id: str,
+            repository_identifier: str,
             embedding_config: Dict[str, Any],
             question: str
     ) -> List[RetrievedChunk]:
@@ -182,44 +253,44 @@ class QueryService:
         混合检索：向量检索 + BM25 关键词检索
 
         Args:
-            session_id: 会话 ID
+            repository_identifier: 仓库标识符（用于Collection命名）
             embedding_config: Embedding 配置
             question: 用户问题
 
         Returns:
             List[RetrievedChunk]: 检索结果
         """
-        logger.info(f"🔍 [混合检索开始] 会话ID: {session_id} - 开始执行混合检索策略")
+        logger.info(f"🔍 [混合检索开始] 仓库: {repository_identifier} - 开始执行混合检索策略")
         
         # 1. 向量检索
-        logger.info(f"📊 [步骤1/4] 会话ID: {session_id} - 执行向量检索")
-        vector_results = self._vector_search(session_id, embedding_config, question)
+        logger.info(f"📊 [步骤1/4] 仓库: {repository_identifier} - 执行向量检索")
+        vector_results = self._vector_search(repository_identifier, embedding_config, question)
 
         # 2. BM25 关键词检索
-        logger.info(f"📊 [步骤2/4] 会话ID: {session_id} - 执行BM25关键词检索")
-        bm25_results = self._bm25_search(session_id, question)
+        logger.info(f"📊 [步骤2/4] 仓库: {repository_identifier} - 执行BM25关键词检索")
+        bm25_results = self._bm25_search(repository_identifier, question)
 
         # 3. RRF 融合
-        logger.info(f"📊 [步骤3/4] 会话ID: {session_id} - 执行RRF融合算法")
+        logger.info(f"📊 [步骤3/4] 仓库: {repository_identifier} - 执行RRF融合算法")
         final_results = self._reciprocal_rank_fusion(vector_results, bm25_results)
 
         # 4. 取前 N 个结果
-        logger.info(f"📊 [步骤4/4] 会话ID: {session_id} - 筛选最终结果")
+        logger.info(f"📊 [步骤4/4] 仓库: {repository_identifier} - 筛选最终结果")
         top_results = final_results[:settings.FINAL_CONTEXT_TOP_K]
         
-        logger.info(f"✅ [混合检索完成] 会话ID: {session_id} - 最终返回 {len(top_results)} 个上下文块")
+        logger.info(f"✅ [混合检索完成] 仓库: {repository_identifier} - 最终返回 {len(top_results)} 个上下文块")
         
         # 记录最终结果的统计信息
         if top_results:
             total_chars = sum(len(chunk.content) for chunk in top_results)
             avg_score = sum(chunk.score for chunk in top_results) / len(top_results)
-            logger.info(f"📈 [结果统计] 会话ID: {session_id} - 总字符数: {total_chars}, 平均分数: {avg_score:.4f}")
+            logger.info(f"📈 [结果统计] 仓库: {repository_identifier} - 总字符数: {total_chars}, 平均分数: {avg_score:.4f}")
         
         return top_results
 
     def _vector_search(
             self,
-            session_id: str,
+            repository_identifier: str,
             embedding_config: Dict[str, Any],
             question: str
     ) -> List[Tuple[str, float, Dict[str, Any]]]:
@@ -227,7 +298,7 @@ class QueryService:
         向量检索
 
         Args:
-            session_id: 会话 ID
+            repository_identifier: 仓库标识符
             embedding_config: Embedding 配置
             question: 用户问题
 
@@ -235,40 +306,38 @@ class QueryService:
             List[Tuple[str, float, Dict[str, Any]]]: (文档ID, 分数, 元数据)
         """
         try:
-            logger.info(f"🔍 [向量检索] 会话ID: {session_id} - 开始向量检索，问题长度: {len(question)} 字符")
+            logger.info(f"🔍 [向量检索] 仓库: {repository_identifier} - 开始向量检索，问题长度: {len(question)} 字符")
             
             # 创建 embedding 配置对象
             # 确保 extra_params 不为 None
             embedding_config_copy = embedding_config.copy()
             if embedding_config_copy.get("extra_params") is None:
                 embedding_config_copy["extra_params"] = {}
-            
+
             embedding_cfg = EmbeddingConfig.from_dict(embedding_config_copy)
-            logger.debug(f"🤖 [模型配置] 会话ID: {session_id} - 使用 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
+            logger.debug(f"🤖 [模型配置] 仓库: {repository_identifier} - 使用 {embedding_cfg.provider}/{embedding_cfg.model_name} 模型")
 
             # 加载 embedding 模型
-            logger.debug(f"⚡ [模型加载] 会话ID: {session_id} - 正在加载 Embedding 模型...")
+            logger.debug(f"⚡ [模型加载] 仓库: {repository_identifier} - 正在加载 Embedding 模型...")
             embedding_model = EmbeddingManager.get_embedding_model(embedding_cfg)
-            logger.debug(f"✅ [模型就绪] 会话ID: {session_id} - Embedding 模型加载完成")
+            logger.debug(f"✅ [模型就绪] 仓库: {repository_identifier} - Embedding 模型加载完成")
 
             # 向量化问题
-            logger.debug(f"🧠 [问题向量化] 会话ID: {session_id} - 正在将问题转换为向量...")
+            logger.debug(f"🧠 [问题向量化] 仓库: {repository_identifier} - 正在将问题转换为向量...")
             question_embedding = embedding_model.embed_query(question)
-            logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 问题向量化完成，维度: {len(question_embedding)}")
+            logger.debug(f"✅ [向量生成] 仓库: {repository_identifier} - 问题向量化完成，维度: {len(question_embedding)}")
 
             # 在向量数据库中搜索
-            logger.debug(f"🔎 [数据库检索] 会话ID: {session_id} - 正在向量数据库中搜索相似文档...")
-            results = get_vector_store().query_collection(
-                collection_name=session_id,
-                query_embedding=question_embedding,
+            logger.debug(f"🔎 [数据库检索] 仓库: {repository_identifier} - 正在向量数据库中搜索相似文档...")
+            results = get_vector_store().query_repository_collection(
+                repository_identifier,
+                question_embedding,
                 n_results=settings.VECTOR_SEARCH_TOP_K
             )
-            logger.debug(f"📊 [检索结果] 会话ID: {session_id} - 向量数据库返回结果")
-
-            # 转换结果格式
+            logger.debug(f"📊 [检索结果] 仓库: {repository_identifier} - 向量数据库返回结果")            # 转换结果格式
             vector_results = []
             if results["ids"] and results["ids"][0]:
-                logger.info(f"✅ [检索成功] 会话ID: {session_id} - 找到 {len(results['ids'][0])} 个相似文档")
+                logger.info(f"✅ [检索成功] 仓库: {repository_identifier} - 找到 {len(results['ids'][0])} 个相似文档")
                 for i, doc_id in enumerate(results["ids"][0]):
                     distance = results["distances"][0][i]
                     # 将距离转换为相似度分数（距离越小，分数越高）
@@ -280,13 +349,13 @@ class QueryService:
                         file_path = metadata.get('file_path', 'unknown')
                         logger.debug(f"📄 [相似文档] 排名{i+1}: {file_path}, 距离: {distance:.4f}, 分数: {score:.4f}")
             else:
-                logger.warning(f"⚠️ [无结果] 会话ID: {session_id} - 向量检索未找到相似文档")
+                logger.warning(f"⚠️ [无结果] 仓库: {repository_identifier} - 向量检索未找到相似文档")
 
-            logger.info(f"🎯 [向量检索完成] 会话ID: {session_id} - 返回 {len(vector_results)} 个结果")
+            logger.info(f"🎯 [向量检索完成] 仓库: {repository_identifier} - 返回 {len(vector_results)} 个结果")
             return vector_results
 
         except Exception as e:
-            logger.error(f"❌ [向量检索失败] 会话ID: {session_id} - {str(e)}")
+            logger.error(f"❌ [向量检索失败] 仓库: {repository_identifier} - {str(e)}")
             return []
 
     def _improved_tokenize(self, text: str) -> List[str]:
@@ -386,34 +455,34 @@ class QueryService:
 
     def _bm25_search(
             self,
-            session_id: str,
+            repository_identifier: str,
             question: str
     ) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
         BM25 关键词检索
 
         Args:
-            session_id: 会话 ID
+            repository_identifier: 仓库标识符
             question: 用户问题
 
         Returns:
             List[Tuple[str, float, Dict[str, Any]]]: (文档ID, 分数, 元数据)
         """
         try:
-            logger.info(f"🔤 [BM25检索] 会话ID: {session_id} - 开始关键词检索")
+            logger.info(f"🔤 [BM25检索] 仓库: {repository_identifier} - 开始关键词检索")
             
             # 获取或构建 BM25 索引
-            bm25_index = self._get_bm25_index(session_id)
+            bm25_index = self._get_bm25_index(repository_identifier)
             if not bm25_index:
-                logger.warning(f"⚠️ [索引缺失] 会话ID: {session_id} - BM25索引不存在")
+                logger.warning(f"⚠️ [索引缺失] 仓库: {repository_identifier} - BM25索引不存在")
                 return []
 
             # 改进的分词逻辑
             query_tokens = self._improved_tokenize(question)
-            logger.info(f"📝 [分词结果] 会话ID: {session_id} - 原始问题: '{question}', 分词结果: {query_tokens}")
+            logger.info(f"📝 [分词结果] 仓库: {repository_identifier} - 原始问题: '{question}', 分词结果: {query_tokens}")
             
             # 调试：检查文档分词情况
-            documents = self._documents_cache.get(session_id, [])
+            documents = self._documents_cache.get(repository_identifier, [])
             if documents and len(documents) > 0:
                 sample_doc = documents[0]
                 sample_content = sample_doc["metadata"].get("content", sample_doc["content"])
@@ -427,12 +496,12 @@ class QueryService:
                 logger.info(f"🔍 [匹配检查] 查询词在样本文档中的匹配: {matching_tokens}")
 
             # BM25 搜索
-            logger.debug(f"🔍 [BM25计算] 会话ID: {session_id} - 正在计算BM25分数...")
+            logger.debug(f"🔍 [BM25计算] 仓库: {repository_identifier} - 正在计算BM25分数...")
             doc_scores = bm25_index.get_scores(query_tokens)
 
             # 获取文档信息
-            documents = self._documents_cache.get(session_id, [])
-            logger.debug(f"📚 [文档缓存] 会话ID: {session_id} - 缓存中有 {len(documents)} 个文档")
+            documents = self._documents_cache.get(repository_identifier, [])
+            logger.debug(f"📚 [文档缓存] 仓库: {repository_identifier} - 缓存中有 {len(documents)} 个文档")
 
             # 检查是否包含文件名查询，给予额外加分
             file_name_bonus = self._calculate_file_name_bonus(query_tokens, documents, doc_scores)
@@ -452,7 +521,7 @@ class QueryService:
             scored_docs.sort(key=lambda x: x[1], reverse=True)
             
             top_results = scored_docs[:settings.BM25_SEARCH_TOP_K]
-            logger.info(f"✅ [BM25完成] 会话ID: {session_id} - 找到 {len([s for s in doc_scores if s > 0])} 个匹配文档，返回前 {len(top_results)} 个")
+            logger.info(f"✅ [BM25完成] 仓库: {repository_identifier} - 找到 {len([s for s in doc_scores if s > 0])} 个匹配文档，返回前 {len(top_results)} 个")
             
             # 记录前几个结果的详细信息
             for i, (doc_id, score, metadata) in enumerate(top_results[:3]):
@@ -462,26 +531,26 @@ class QueryService:
             return top_results
 
         except Exception as e:
-            logger.error(f"❌ [BM25检索失败] 会话ID: {session_id} - {str(e)}")
+            logger.error(f"❌ [BM25检索失败] 仓库: {repository_identifier} - {str(e)}")
             return []
 
-    def _get_bm25_index(self, session_id: str):
+    def _get_bm25_index(self, repository_identifier: str):
         """
         获取或构建 BM25 索引
 
         Args:
-            session_id: 会话 ID
+            repository_identifier: 仓库标识符
 
         Returns:
             BM25Okapi 索引或 None
         """
         # 检查缓存
-        if session_id in self._bm25_cache:
-            return self._bm25_cache[session_id]
+        if repository_identifier in self._bm25_cache:
+            return self._bm25_cache[repository_identifier]
 
         try:
-            # 获取所有文档
-            documents = get_vector_store().get_all_documents_from_collection(session_id)
+            # 获取所有文档 - 使用基于仓库的查询
+            documents = get_vector_store().get_all_documents_from_repository_collection(repository_identifier)
             if not documents:
                 return None
 
@@ -500,10 +569,10 @@ class QueryService:
             bm25_index = BM25Okapi(doc_texts)
 
             # 缓存索引和文档
-            self._bm25_cache[session_id] = bm25_index
-            self._documents_cache[session_id] = documents
+            self._bm25_cache[repository_identifier] = bm25_index
+            self._documents_cache[repository_identifier] = documents
 
-            logger.info(f"为会话 {session_id} 构建了 BM25 索引，包含 {len(documents)} 个文档")
+            logger.info(f"为仓库 {repository_identifier} 构建了 BM25 索引，包含 {len(documents)} 个文档")
             return bm25_index
 
         except Exception as e:

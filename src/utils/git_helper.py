@@ -6,6 +6,7 @@ Git 仓库操作工具
 import os
 import shutil
 import logging
+import hashlib
 from typing import Optional, Tuple
 from urllib.parse import urlparse
 import git
@@ -21,6 +22,52 @@ class GitCloneError(Exception):
 
 class GitHelper:
     """Git 操作助手类"""
+    
+    @staticmethod
+    def generate_repository_identifier(url: str) -> str:
+        """
+        基于仓库URL生成唯一且持久的标识符
+        用于ChromaDB Collection命名，确保同一仓库总是使用相同的Collection
+        
+        Args:
+            url: GitHub 仓库 URL
+            
+        Returns:
+            str: 仓库的唯一标识符
+        """
+        try:
+            # 标准化URL格式
+            url = url.strip().lower()
+            
+            # 如果没有协议，添加 https://
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+            
+            parsed = urlparse(url)
+            path_parts = [part for part in parsed.path.strip('/').split('/') if part]
+            
+            if len(path_parts) < 2:
+                raise ValueError("URL 路径格式无效")
+            
+            owner = path_parts[0]
+            repo_name = path_parts[1]
+            
+            # 移除 .git 后缀
+            if repo_name.endswith('.git'):
+                repo_name = repo_name[:-4]
+            
+            # 生成标准化的仓库标识符：github_owner_repo
+            repo_identifier = f"github_{owner}_{repo_name}"
+            
+            # 使用SHA256哈希确保标识符不会过长且唯一
+            # 但保留可读性，前缀使用原始信息，后缀使用哈希
+            hash_suffix = hashlib.sha256(f"{owner}/{repo_name}".encode()).hexdigest()[:8]
+            final_identifier = f"{repo_identifier}_{hash_suffix}"
+            
+            return final_identifier
+            
+        except Exception as e:
+            raise ValueError(f"生成仓库标识符失败: {str(e)}")
     
     @staticmethod
     def validate_github_url(url: str) -> bool:

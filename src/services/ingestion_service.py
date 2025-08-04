@@ -1,22 +1,21 @@
 """
 数据注入服务
 负责完整的仓库分析流水线：克隆 -> 解析 -> 分块 -> 向量化 -> 存储
+现在支持基于仓库的持久化Collection管理，避免重复分析产生冗余数据
 """
-
 import os
 import time
 import logging
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
-from datetime import datetime, timezone
 
 from ..core.config import settings
 from ..db.session import get_db_session
-from ..db.models import AnalysisSession, FileMetadata, TaskStatus
+from ..db.models import AnalysisSession, FileMetadata, TaskStatus, Repository
 from ..utils.git_helper import GitHelper
 from ..utils.file_parser import FileParser
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig
@@ -40,7 +39,7 @@ class IngestionService:
             task_instance=None
     ) -> bool:
         """
-        处理仓库的完整流水线
+        处理仓库的完整流水线 - 支持基于仓库的持久化Collection管理
 
         Args:
             repo_url: 仓库 URL
@@ -55,6 +54,10 @@ class IngestionService:
         error_messages = []
 
         try:
+            # 生成仓库标识符，用于持久化Collection管理
+            repo_identifier = GitHelper.generate_repository_identifier(repo_url)
+            logger.info(f"🏷️ [仓库标识] 会话ID: {session_id} - 仓库标识符: {repo_identifier}")
+            
             # 更新任务状态为处理中
             logger.info(f"📊 [状态更新] 会话ID: {session_id} - 任务状态设置为处理中")
             self._update_session_status(db, session_id, TaskStatus.PROCESSING, started_at=datetime.now(timezone.utc))
@@ -74,14 +77,38 @@ class IngestionService:
                 logger.error(f"❌ [关键失败] 会话ID: {session_id} - Embedding配置或模型加载失败: {e}")
                 raise  # 这是关键步骤，失败则无法继续
 
-            # 2. 向量数据库创建块
+            # 2. 基于仓库的向量数据库管理块
             try:
-                logger.info(f"🗄️ [数据库] 会话ID: {session_id} - 创建向量数据库集合")
+                logger.info(f"🗄️ [数据库检查] 会话ID: {session_id} - 检查仓库 {repo_identifier} 的Collection状态")
                 vector_store = get_vector_store()
-                if not vector_store.create_collection(session_id, embedding_model):
-                    raise Exception("创建向量数据库集合失败")
-                logger.info(f"✅ [数据库就绪] 会话ID: {session_id} - 向量数据库集合创建成功")
-                self._update_task_progress(task_instance, 20, "向量数据库集合创建完成")
+                
+                # 检查仓库Collection是否已存在
+                collection_exists = vector_store.check_repository_collection_exists(repo_identifier)
+                
+                if collection_exists:
+                    logger.info(f"📦 [Collection已存在] 会话ID: {session_id} - 仓库 {repo_identifier} 已分析过，跳过重复分析")
+                    self._update_task_progress(task_instance, 20, "发现已存在的Collection，跳过重复分析")
+                    
+                    # 检查Collection中的文档数量
+                    doc_count = vector_store.count_documents_in_repository_collection(repo_identifier)
+                    logger.info(f"📊 [数据统计] 会话ID: {session_id} - 仓库 {repo_identifier} 已有 {doc_count} 个文档块")
+                    
+                    # 直接标记任务为成功并返回
+                    logger.info(f"✅ [跳过分析] 会话ID: {session_id} - 仓库已分析，直接标记为成功")
+                    self._update_session_status(
+                        db, session_id, TaskStatus.SUCCESS,
+                        completed_at=datetime.now(timezone.utc)
+                    )
+                    self._update_task_progress(task_instance, 100, f"任务完成（复用现有分析结果，{doc_count}个文档块）")
+                    logger.info(f"🎉 [任务完成] 会话ID: {session_id} - 复用仓库 {repo_url} 的现有分析结果")
+                    return True
+                else:
+                    logger.info(f"🆕 [新建Collection] 会话ID: {session_id} - 为仓库 {repo_identifier} 创建新的Collection")
+                    if not vector_store.create_repository_collection(repo_identifier, embedding_model):
+                        raise Exception("创建仓库向量数据库集合失败")
+                    logger.info(f"✅ [数据库就绪] 会话ID: {session_id} - 仓库向量数据库集合创建成功")
+                    self._update_task_progress(task_instance, 20, "向量数据库集合创建完成")
+                    
             except Exception as e:
                 logger.error(f"❌ [关键失败] 会话ID: {session_id} - 向量数据库初始化失败: {e}")
                 raise # 这是关键步骤，失败则无法继续
@@ -121,7 +148,11 @@ class IngestionService:
             if all_documents:
                 try:
                     logger.info(f"🔄 [向量化] 会话ID: {session_id} - 开始向量化 {len(all_documents)} 个文档块")
-                    self._vectorize_and_store_documents(db, session_id, all_documents, embedding_model, task_instance, embedding_cfg.batch_size)
+                    # 使用基于仓库的向量化存储方法
+                    self._vectorize_and_store_repository_documents(
+                        db, session_id, repo_identifier, all_documents, 
+                        embedding_model, task_instance, embedding_cfg.batch_size
+                    )
                     logger.info(f"✅ [向量化完成] 会话ID: {session_id} - 所有文档向量化并存储完成")
                 except Exception as e:
                     logger.error(f"❌ [错误] 会话ID: {session_id} - 向量化和存储过程中发生错误: {e}")
@@ -330,6 +361,101 @@ class IngestionService:
                     logger.error(f"💥 [元数据单个保存失败] 文件 {metadata.file_path}: {str(individual_e)}")
                     db.rollback()
 
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
+    def _vectorize_and_store_repository_documents(
+            self,
+            db: Session,
+            session_id: str,
+            repository_identifier: str,
+            documents: List[Document],
+            embedding_model: Embeddings,
+            task_instance=None,
+            batch_size: int = None,
+            clear_existing: bool = False
+    ):
+        """
+        向量化文档并存储到仓库的持久化Collection中
+
+        Args:
+            db: 数据库会话
+            session_id: 会话 ID
+            repository_identifier: 仓库唯一标识符
+            documents: 要处理的文档列表
+            embedding_model: Embedding 模型
+            task_instance: Celery任务实例
+            batch_size: 批处理大小
+            clear_existing: 是否清空现有数据
+        """
+        if not documents:
+            logger.warning(f"⚠️ [空文档列表] 会话ID: {session_id} - 没有文档需要向量化")
+            return
+
+        try:
+            vector_store = get_vector_store()
+            batch_size = batch_size or settings.EMBEDDING_BATCH_SIZE
+            total_docs = len(documents)
+            processed_docs = 0
+
+            logger.info(f"🔄 [开始向量化] 会话ID: {session_id} - 仓库: {repository_identifier}")
+            logger.info(f"📊 [处理配置] 总文档数: {total_docs}, 批次大小: {batch_size}, 清空现有: {clear_existing}")
+
+            # 分批处理文档
+            for i in range(0, total_docs, batch_size):
+                batch_docs = documents[i:i + batch_size]
+                batch_size_actual = len(batch_docs)
+                batch_num = (i // batch_size) + 1
+                total_batches = (total_docs + batch_size - 1) // batch_size
+
+                logger.info(f"📦 [批次处理] 会话ID: {session_id} - 第 {batch_num}/{total_batches} 批次 ({batch_size_actual} 个文档)")
+
+                try:
+                    # 生成嵌入向量
+                    texts = [doc.page_content for doc in batch_docs]
+                    embeddings = embedding_model.embed_documents(texts)
+
+                    logger.debug(f"✅ [向量生成] 会话ID: {session_id} - 批次 {batch_num} 向量生成完成")
+
+                    # 存储到仓库Collection中
+                    clear_for_this_batch = clear_existing and (i == 0)  # 只在第一批时清空
+                    success = vector_store.add_documents_to_repository_collection(
+                        repository_identifier,
+                        batch_docs,
+                        embeddings,
+                        batch_size,
+                        clear_for_this_batch
+                    )
+
+                    if success:
+                        processed_docs += batch_size_actual
+                        # 更新数据库中的索引统计
+                        self._update_session_stats(db, session_id, indexed_chunks=processed_docs)
+                        
+                        progress = 75 + int((processed_docs / total_docs) * 20)  # 75%-95%
+                        self._update_task_progress(
+                            task_instance, 
+                            progress, 
+                            f"向量化进度: {processed_docs}/{total_docs}"
+                        )
+                        
+                        logger.info(f"✅ [批次完成] 会话ID: {session_id} - 批次 {batch_num} 存储成功")
+                    else:
+                        logger.error(f"❌ [批次失败] 会话ID: {session_id} - 批次 {batch_num} 存储失败")
+                        raise Exception(f"批次 {batch_num} 向量存储失败")
+
+                except Exception as batch_error:
+                    logger.error(f"💥 [批次异常] 会话ID: {session_id} - 批次 {batch_num} 处理失败: {str(batch_error)}")
+                    raise
+
+            logger.info(f"🎉 [向量化完成] 会话ID: {session_id} - 成功处理 {processed_docs} 个文档到仓库Collection")
+
+        except Exception as e:
+            error_msg = f"向量化和存储失败: {str(e)}"
+            logger.error(f"💥 [向量化失败] 会话ID: {session_id} - {error_msg}")
+            raise Exception(error_msg)
 
     @retry(
         stop=stop_after_attempt(3),

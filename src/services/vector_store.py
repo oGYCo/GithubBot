@@ -221,6 +221,259 @@ class VectorStore:
                     logger.error(f"💥 [连接彻底失败] 已尝试 {max_retries} 次，ChromaDB 连接失败")
                     raise
 
+    def check_repository_collection_exists(self, repository_identifier: str) -> bool:
+        """
+        检查仓库的Collection是否存在
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            bool: Collection是否存在
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"🔍 [检查仓库Collection] 检查Collection是否存在: {collection_name}")
+        
+        exists = self.collection_exists(collection_name)
+        if exists:
+            logger.info(f"✅ [Collection存在] 仓库Collection已存在: {collection_name}")
+        else:
+            logger.info(f"❌ [Collection不存在] 仓库Collection不存在: {collection_name}")
+            
+        return exists
+
+    def create_repository_collection(
+            self, 
+            repository_identifier: str, 
+            embedding_function=None
+    ) -> bool:
+        """
+        为仓库创建Collection
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            embedding_function: 嵌入函数
+            
+        Returns:
+            bool: 是否创建成功
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"🆕 [创建仓库Collection] 创建Collection: {collection_name}")
+        
+        success = self.create_collection(collection_name, embedding_function)
+        if success:
+            logger.info(f"✅ [创建成功] 仓库Collection创建成功: {collection_name}")
+        else:
+            logger.error(f"❌ [创建失败] 仓库Collection创建失败: {collection_name}")
+            
+        return success
+
+    def get_all_documents_from_repository_collection(self, repository_identifier: str) -> List[Dict[str, Any]]:
+        """
+        获取仓库Collection中的所有文档（用于 BM25 检索）
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            List[Dict[str, Any]]: 文档列表
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"📋 [获取仓库文档] 获取仓库Collection所有文档: {collection_name}")
+        
+        return self.get_all_documents_from_collection(collection_name)
+
+    def count_documents_in_repository_collection(self, repository_identifier: str) -> int:
+        """
+        计算仓库Collection中的文档数量
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            int: 文档数量
+        """
+        collection_name = f"repo_{repository_identifier}"
+        
+        try:
+            collection = self.client.get_collection(name=collection_name)
+            count = collection.count()
+            logger.info(f"📊 [文档统计] 仓库Collection {collection_name} 包含 {count} 个文档")
+            return count
+        except Exception as e:
+            logger.warning(f"⚠️ [统计失败] 无法获取仓库Collection {collection_name} 的文档数量: {str(e)}")
+            return 0
+
+    def get_or_create_repository_collection(
+            self, 
+            repository_identifier: str, 
+            embedding_function=None
+    ) -> Tuple[bool, bool]:
+        """
+        获取或创建基于仓库标识符的Collection
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            embedding_function: 嵌入函数
+            
+        Returns:
+            Tuple[bool, bool]: (操作是否成功, 是否为新创建的Collection)
+        """
+        try:
+            collection_name = f"repo_{repository_identifier}"
+            
+            logger.info(f"🔍 [检查仓库Collection] 检查Collection: {collection_name}")
+            
+            # 检查Collection是否已存在
+            if self.collection_exists(collection_name):
+                logger.info(f"✅ [Collection存在] 仓库Collection已存在: {collection_name}")
+                return True, False  # 成功，但不是新创建的
+            
+            logger.info(f"📝 [创建新Collection] 为仓库创建新Collection: {collection_name}")
+            
+            # 创建新Collection
+            success = self.create_collection(collection_name, embedding_function)
+            if success:
+                logger.info(f"🎉 [创建成功] 仓库Collection创建成功: {collection_name}")
+                return True, True  # 成功，且是新创建的
+            else:
+                logger.error(f"❌ [创建失败] 仓库Collection创建失败: {collection_name}")
+                return False, False
+                
+        except Exception as e:
+            logger.error(f"❌ [操作异常] 获取或创建仓库Collection失败: {str(e)}")
+            return False, False
+
+    def add_documents_to_repository_collection(
+            self,
+            repository_identifier: str,
+            documents: List[Document],
+            embeddings: List[List[float]],
+            batch_size: int = None,
+            clear_existing: bool = False
+    ) -> bool:
+        """
+        向仓库的Collection添加文档
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            documents: 文档列表
+            embeddings: 嵌入向量列表
+            batch_size: 批处理大小
+            clear_existing: 是否清空现有数据（用于完全重新分析）
+            
+        Returns:
+            bool: 是否添加成功
+        """
+        try:
+            collection_name = f"repo_{repository_identifier}"
+            
+            logger.info(f"💾 [仓库文档存储] 开始向仓库Collection存储文档: {collection_name}")
+            logger.info(f"📊 [存储配置] 文档数: {len(documents)}, 清空现有数据: {clear_existing}")
+            
+            # 如果需要清空现有数据
+            if clear_existing:
+                logger.info(f"🗑️ [清空数据] 清空Collection现有数据: {collection_name}")
+                # 删除并重新创建Collection
+                if self.collection_exists(collection_name):
+                    self.delete_collection(collection_name)
+                # 重新创建时需要传入embedding_function，但这里我们先简化
+                # 在实际使用时，调用方应该确保在clear_existing=True时提供embedding_function
+                
+            # 使用原有的文档添加方法
+            success = self.add_documents_to_collection(
+                collection_name,
+                documents,
+                embeddings,
+                batch_size
+            )
+            
+            if success:
+                logger.info(f"✅ [仓库存储成功] 成功向仓库Collection存储 {len(documents)} 个文档")
+            else:
+                logger.error(f"❌ [仓库存储失败] 向仓库Collection存储文档失败")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"❌ [仓库存储异常] 向仓库Collection存储文档时发生异常: {str(e)}")
+            return False
+
+    def query_repository_collection(
+            self,
+            repository_identifier: str,
+            query_embedding: List[float],
+            n_results: int = 10,
+            where: Optional[Dict[str, Any]] = None,
+            include: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        查询仓库的Collection
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            query_embedding: 查询向量
+            n_results: 返回结果数量
+            where: 元数据过滤条件
+            include: 包含的字段
+            
+        Returns:
+            Dict[str, Any]: 查询结果
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"🔍 [仓库查询] 查询仓库Collection: {collection_name}")
+        
+        return self.query_collection(
+            collection_name,
+            query_embedding,
+            n_results,
+            where,
+            include
+        )
+
+    def get_repository_collection_documents(self, repository_identifier: str) -> List[Dict[str, Any]]:
+        """
+        获取仓库Collection中的所有文档（用于 BM25 检索）
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            List[Dict[str, Any]]: 文档列表
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"📋 [获取仓库文档] 获取仓库Collection所有文档: {collection_name}")
+        
+        return self.get_all_documents_from_collection(collection_name)
+
+    def get_repository_collection_stats(self, repository_identifier: str) -> Dict[str, Any]:
+        """
+        获取仓库Collection统计信息
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            Dict[str, Any]: 统计信息
+        """
+        collection_name = f"repo_{repository_identifier}"
+        return self.get_collection_stats(collection_name)
+
+    def delete_repository_collection(self, repository_identifier: str) -> bool:
+        """
+        删除仓库的Collection
+        
+        Args:
+            repository_identifier: 仓库唯一标识符
+            
+        Returns:
+            bool: 是否删除成功
+        """
+        collection_name = f"repo_{repository_identifier}"
+        logger.info(f"🗑️ [删除仓库Collection] 删除仓库Collection: {collection_name}")
+        
+        return self.delete_collection(collection_name)
+
     def create_collection(self, collection_name: str, embedding_function=None) -> bool:
         """
         创建某个git仓库的集合
