@@ -33,6 +33,7 @@ class AnalysisSession(Base):
     repository_url = Column(String(512), nullable=False)
     repository_name = Column(String(256), nullable=True)
     repository_owner = Column(String(128), nullable=True)
+    repository_identifier = Column(String(128), nullable=True, index=True)  # 新增：仓库唯一标识符
 
     # 任务状态
     status = Column(SQLEnum(TaskStatus), default=TaskStatus.PENDING, nullable=False)
@@ -91,6 +92,57 @@ class AnalysisSession(Base):
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "processing_duration": self.processing_duration
+        }
+
+
+class Repository(Base):
+    """仓库持久性模型 - 跟踪仓库的向量数据库Collection信息"""
+    __tablename__ = "repositories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    repository_identifier = Column(String(128), unique=True, index=True, nullable=False)  # 仓库唯一标识符
+    repository_url = Column(String(512), nullable=False, index=True)
+    repository_name = Column(String(256), nullable=False)
+    repository_owner = Column(String(128), nullable=False)
+    
+    # Collection 信息
+    collection_name = Column(String(128), nullable=False)  # ChromaDB Collection 名称
+    
+    # 统计信息
+    total_files = Column(Integer, default=0)
+    total_chunks = Column(Integer, default=0)
+    last_analysis_session_id = Column(String(64), nullable=True)  # 最后一次分析的会话ID
+    
+    # 版本信息
+    last_commit_hash = Column(String(64), nullable=True)  # 最后处理的提交哈希
+    
+    # 配置信息
+    embedding_config = Column(JSON, nullable=True)  # 最后使用的Embedding配置
+    
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    last_analyzed_at = Column(DateTime(timezone=True), nullable=True)
+
+    def __repr__(self):
+        return f"<Repository(identifier={self.repository_identifier}, url={self.repository_url})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "repository_identifier": self.repository_identifier,
+            "repository_url": self.repository_url,
+            "repository_name": self.repository_name,
+            "repository_owner": self.repository_owner,
+            "collection_name": self.collection_name,
+            "total_files": self.total_files,
+            "total_chunks": self.total_chunks,
+            "last_analysis_session_id": self.last_analysis_session_id,
+            "last_commit_hash": self.last_commit_hash,
+            "embedding_config": self.embedding_config,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_analyzed_at": self.last_analyzed_at.isoformat() if self.last_analyzed_at else None,
         }
 
 
