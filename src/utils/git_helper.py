@@ -223,8 +223,8 @@ class GitHelper:
             repo = git.Repo.clone_from(
                 url=url,
                 to_path=target_dir,
-                depth=1,  # 浅克隆，只获取最新提交
-                single_branch=True  # 只克隆默认分支
+                depth=1,# 浅克隆，只获取最新提交
+                single_branch=True,# 只克隆默认分支
                 config=git_config
             )
 
