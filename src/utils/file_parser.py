@@ -396,7 +396,7 @@ class FileParser:
             metadatas=[{
                 "file_path": rel_path,
                 "file_type": self.get_file_type_and_language(file_path)[0],
-                "language": language.value if language and hasattr(language, 'value') else language,
+                "language": language.value if language and hasattr(language, 'value') else "",
                 "source": file_path
             }]
         )
@@ -406,7 +406,6 @@ class FileParser:
             # 计算起始行号（简单估算）
             start_line = i * (settings.CHUNK_SIZE // 50) + 1  # 假设平均每行 50 字符
             doc.metadata["start_line"] = start_line
-            doc.metadata["chunk_index"] = i
         
         return documents
     
@@ -523,7 +522,7 @@ class FileParser:
                         "file_path": rel_path,
                         "full_path": file_path,
                         "file_type": file_type,
-                        "language": language.value if language and hasattr(language, 'value') else language,
+                        "language": language.value if language and hasattr(language, 'value') else "",
                         "file_size": stat.st_size,
                         "file_extension": os.path.splitext(file_name)[1].lower()
                     }
