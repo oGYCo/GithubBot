@@ -211,13 +211,21 @@ class GitHelper:
             logger.info(f"📁 [目标目录] 路径: {target_dir}")
             logger.info(f"⚙️ [克隆配置] 浅克隆(depth=1), 单分支, 超时: {timeout or getattr(settings, 'CLONE_TIMEOUT', 300)}s")
             
+            git_config = [
+                'http.version=HTTP/1.1',
+                'http.postBuffer=524288000', 
+                'http.lowSpeedLimit=1000',
+                'http.lowSpeedTime=300'
+            ]
+            
             # 注意：GitPython 的 timeout 参数可能不被所有版本支持
             # 使用基本的克隆参数，避免 timeout 导致的兼容性问题
             repo = git.Repo.clone_from(
                 url=url,
                 to_path=target_dir,
-                depth=1,  # 浅克隆，只获取最新提交
-                single_branch=True  # 只克隆默认分支
+                depth=1,# 浅克隆，只获取最新提交
+                single_branch=True,# 只克隆默认分支
+                config=git_config
             )
 
             logger.info(f"✅ [克隆成功] 仓库已克隆到: {target_dir}")
