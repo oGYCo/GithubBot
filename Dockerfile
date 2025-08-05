@@ -9,7 +9,15 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/* && \
+    # 关键的Git网络配置
+    git config --global http.version HTTP/1.1 && \
+    git config --global http.postBuffer 524288000 && \
+    git config --global http.sslVerify true && \
+    git config --global http.timeout 300 && \
+    update-ca-certificates
 
 # 复制依赖文件
 COPY requirements.txt .

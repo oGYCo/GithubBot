@@ -596,28 +596,7 @@ class VectorStore:
                     metadata = doc.metadata.copy()
                     # 将文档内容也存入元数据（ChromaDB 最佳实践）
                     metadata["content"] = doc.page_content
-                    
-                    # 记录原始元数据
-                    logger.info(f"🔍 [原始元数据] 文档 {j}: {metadata}")
-                    
-                    # 确保所有元数据值都是 ChromaDB 支持的基本类型
-                    cleaned_metadata = {}
-                    for key, value in metadata.items():
-                        if value is None:
-                            # ChromaDB 不支持 None 值，转换为空字符串
-                            logger.info(f"🔧 [None值处理] 字段 {key}: None -> 空字符串")
-                            cleaned_metadata[key] = ""
-                        elif isinstance(value, (str, int, float, bool)):
-                            cleaned_metadata[key] = value
-                        else:
-                            # 将复杂类型转换为字符串
-                            logger.info(f"🔧 [类型转换] 字段 {key}: {type(value)} -> str, 原值: {value}")
-                            cleaned_metadata[key] = str(value)
-                    
-                    # 记录清理后的元数据
-                    logger.info(f"🧹 [清理后元数据] 文档 {j}: {cleaned_metadata}")
-                    
-                    metadatas.append(cleaned_metadata)
+                    metadatas.append(metadata)
                     
                     if j < 3:  # 只记录前3个文档的详细信息
                         logger.debug(f"📄 [文档信息] ID: {ids[j]}, 文件: {metadata.get('file_path', 'unknown')}, 大小: {len(doc.page_content)} 字符")
