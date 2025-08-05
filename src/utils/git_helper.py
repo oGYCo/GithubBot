@@ -225,7 +225,8 @@ class GitHelper:
                 to_path=target_dir,
                 depth=1,# 浅克隆，只获取最新提交
                 single_branch=True,# 只克隆默认分支
-                config=git_config
+                config=git_config,
+                allow_unsafe_options=True
             )
 
             logger.info(f"✅ [克隆成功] 仓库已克隆到: {target_dir}")
