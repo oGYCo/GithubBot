@@ -25,6 +25,7 @@ langchain==0.3.26
 langchain-core==0.3.69
 langchain-community==0.3.27
 langchain-text-splitters==0.3.8
+eventlet==0.40.0
 
 # LangChain 模型集成
 langchain_openai==0.3.28
