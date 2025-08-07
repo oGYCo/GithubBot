@@ -198,6 +198,14 @@ class Settings(BaseSettings):
     VECTOR_SEARCH_TOP_K: int = 10
     BM25_SEARCH_TOP_K: int = 10
 
+    # AST解析配置
+    ENABLE_AST_PARSING: bool = True
+    AST_MAX_FILE_SIZE: int = 1024 * 1024  # 1MB
+    AST_SUPPORTED_LANGUAGES: list = [
+        'python', 'js', 'ts', 'java', 'cpp', 'c', 'csharp', 
+        'go', 'rust'
+    ]
+
 # 全局配置实例
 settings = Settings()
 

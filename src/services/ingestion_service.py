@@ -13,12 +13,12 @@ from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
-
 from ..core.config import settings
 from ..db.session import get_db_session
 from ..db.models import AnalysisSession, FileMetadata, TaskStatus, Repository
 from ..utils.git_helper import GitHelper
 from ..utils.file_parser import FileParser
+from ..utils.ast_parser import AstParser
 from ..services.embedding_manager import EmbeddingManager, EmbeddingConfig, BatchEmbeddingProcessor
 from ..services.vector_store import get_vector_store
 
@@ -29,6 +29,7 @@ class IngestionService:
     """数据注入服务"""
 
     def __init__(self):
+        self.ast_parser = AstParser()
         self.file_parser = FileParser()
         self.git_helper = GitHelper()
 
@@ -218,7 +219,7 @@ class IngestionService:
             task_instance=None
     ) -> Tuple[int, int, List[Document]]:
         """
-        处理仓库中的所有文件
+        处理仓库中的所有文件 - 支持AST解析
 
         Args:
             db: 数据库会话
@@ -230,11 +231,11 @@ class IngestionService:
         """
         total_chunks = 0
         processed_files = 0
-
+        
         # 收集所有文档块和元数据
         all_documents = []
         all_file_metadata = []
-
+        
         # 扫描仓库文件
         logger.info(f"🔍 [文件扫描] 会话ID: {session_id} - 开始扫描仓库文件")
         files_to_process = list(self.file_parser.scan_repository(repo_path))
@@ -286,14 +287,20 @@ class IngestionService:
                             file_metadata.dependencies = special_info["dependencies"]
                         logger.debug(f"🔧 [特殊文件] 会话ID: {session_id} - {relative_file_path}: {special_info.get('type', '')}")
 
-                # 分割文档
-                # 从文件信息中获取语言类型
+                # 分割文档 - 从文件信息中获取语言类型
                 file_type, language = self.file_parser.get_file_type_and_language(file_path)
-                documents = self.file_parser.split_file_content(
-                    content,
-                    relative_file_path,
-                    language=language
-                )
+                language_str = language.value if language and hasattr(language, 'value') else ""
+                
+                # 判断是否为代码文件，决定使用AST解析还是普通分割
+                if self.ast_parser.should_use_ast_parsing(file_info, language_str):
+                    logger.info(f"🌳 [AST解析] 会话ID: {session_id} - 使用AST解析文件: {relative_file_path}")
+                    documents = self.ast_parser.parse_with_ast(content, relative_file_path, language_str)
+                    file_metadata.content_summary = "AST解析的代码文件"
+                else:
+                    logger.debug(f"📝 [常规解析] 会话ID: {session_id} - 使用常规分割: {relative_file_path}")
+                    documents = self.file_parser.split_file_content(
+                        content, relative_file_path, language=language
+                    )
 
                 if documents:
                     # 为每个文档块添加全局索引
@@ -313,10 +320,6 @@ class IngestionService:
                     file_metadata.error_message = "未生成文档块"
                     logger.debug(f"⚠️ [无块生成] 会话ID: {session_id} - {relative_file_path}: 未生成文档块")
 
-            except (IOError, UnicodeDecodeError) as e:
-                logger.error(f"💥 [读取失败] 会话ID: {session_id} - 文件 {relative_file_path}: {str(e)}")
-                file_metadata.is_processed = "failed"
-                file_metadata.error_message = f"文件读取错误: {str(e)}"
             except Exception as e:
                 logger.error(f"💥 [处理失败] 会话ID: {session_id} - 文件 {relative_file_path}: {str(e)}")
                 file_metadata.is_processed = "failed"
@@ -324,7 +327,7 @@ class IngestionService:
 
             all_file_metadata.append(file_metadata)
 
-            # 每50个文件元数据保存一次
+            # 批量保存元数据
             if len(all_file_metadata) >= 50:
                 self._save_metadata_batch(db, all_file_metadata)
                 all_file_metadata.clear() # 清空列表以便收集下一批
@@ -332,9 +335,8 @@ class IngestionService:
                 self._update_session_stats(
                     db, session_id, processed_files=processed_files, total_chunks=total_chunks
                 )
-                logger.info(f"已扫描 {file_index}/{total_files} 个文件，生成 {total_chunks} 个块")
 
-        # 保存最后一批剩余的文件元数据
+        # 保存最后一批元数据
         if all_file_metadata:
             self._save_metadata_batch(db, all_file_metadata)
             all_file_metadata.clear()
