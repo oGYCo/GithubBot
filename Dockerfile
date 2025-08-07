@@ -23,7 +23,9 @@ RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.li
 COPY requirements.txt .
 
 # 安装 Python 依赖（已添加国内镜像源加速）
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ || \
+    pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple/ || \
+    pip install --no-cache-dir -r requirements.txt -i https://pypi.doubanio.com/simple/
 
 # 复制应用代码
 COPY . .
