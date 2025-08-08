@@ -52,3 +52,21 @@ pathspec==0.12.1
 # HTTP 客户端
 requests==2.32.4
 httpx==0.28.1
+
+# Tree-sitter ast 解析器
+tree-sitter>=0.20.0
+tree-sitter-languages>=1.7.0
+tree-sitter-python
+tree-sitter-javascript
+tree-sitter-typescript
+tree-sitter-java
+tree-sitter-cpp
+tree-sitter-go
+tree-sitter-rust
+tree-sitter-c-sharp
+
+# Optional: Additional language support
+# tree-sitter-php
+# tree-sitter-ruby
+# tree-sitter-kotlin
+# tree-sitter-swift

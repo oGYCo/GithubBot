@@ -35,8 +35,9 @@ services:
     environment:
       - CHROMA_SERVER_HOST=0.0.0.0
       - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_SERVER_PERSISTENCE_PATH=/data
     volumes:
-      - chromadb_data:/chroma/chroma
+      - chromadb_data:/data
     ports:
       - "8001:8000"
     networks:
