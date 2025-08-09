@@ -5,6 +5,7 @@ AST解析器
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Set, Callable
 from langchain_core.documents import Document
 from tree_sitter import Language, Parser, Node
@@ -88,11 +89,29 @@ class AstParser:
         }}
     }
 
-    def __init__(self):
-        """初始化AST解析器"""
+    def __init__(self, 
+                 chunk_size: int = 1000,
+                 chunk_overlap: int = 200,
+                 min_chunk_size: int = 100,
+                 max_chunk_size: int = 2000):
+        """初始化AST解析器
+        
+        Args:
+            chunk_size: 目标块大小（非空白字符数）
+            chunk_overlap: 块重叠大小
+            min_chunk_size: 最小块大小
+            max_chunk_size: 最大块大小
+        """
         self.parsers: Dict[str, Parser] = {}
         self._extension_to_language = {}
         self._element_extractors_cache = {}
+        
+        # 分块配置
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.min_chunk_size = min_chunk_size
+        self.max_chunk_size = max_chunk_size
+        
         self._init_languages()
 
     def _init_languages(self):
@@ -195,12 +214,280 @@ class AstParser:
             # 提取代码元素
             self._extract_code_elements(tree.root_node, source_bytes, file_path, documents, actual_language)
             
-            logger.debug(f"✅ AST解析完成: {file_path} ({actual_language}), 提取了 {len(documents)} 个代码元素")
-            return documents
+            # 应用分块和合并策略
+            processed_documents = self._process_documents_with_chunking(documents, file_path, actual_language)
+            
+            logger.debug(f"✅ AST解析完成: {file_path} ({actual_language}), 提取了 {len(documents)} 个代码元素，处理后 {len(processed_documents)} 个文档块")
+            return processed_documents
             
         except Exception as e:
             logger.error(f"❌ AST解析失败: {file_path}, 错误: {str(e)}")
             return self._create_fallback_document(content, file_path, language, "ast_parsing_failed")
+
+    def _count_non_whitespace_chars(self, text: str) -> int:
+        """计算非空白字符数"""
+        return len(re.sub(r'\s', '', text))
+
+    def _process_documents_with_chunking(self, documents: List[Document], file_path: str, language: str) -> List[Document]:
+        """
+        对文档进行分块和合并处理
+        
+        Args:
+            documents: 原始文档列表
+            file_path: 文件路径
+            language: 编程语言
+            
+        Returns:
+            List[Document]: 处理后的文档列表
+        """
+        if not documents:
+            return documents
+            
+        processed_docs = []
+        
+        # 首先处理需要分块的大文档
+        for doc in documents:
+            non_ws_count = self._count_non_whitespace_chars(doc.page_content)
+            
+            if non_ws_count > self.max_chunk_size:
+                # 需要分块
+                chunked_docs = self._chunk_large_document(doc, file_path, language)
+                processed_docs.extend(chunked_docs)
+            else:
+                processed_docs.append(doc)
+        
+        # 然后合并小文档
+        merged_docs = self._merge_small_documents(processed_docs, file_path, language)
+        
+        return merged_docs
+
+    def _chunk_large_document(self, doc: Document, file_path: str, language: str) -> List[Document]:
+        """
+        分块大文档
+        
+        Args:
+            doc: 要分块的文档
+            file_path: 文件路径
+            language: 编程语言
+            
+        Returns:
+            List[Document]: 分块后的文档列表
+        """
+        content = doc.page_content
+        lines = content.split('\n')
+        chunks = []
+        
+        current_chunk_lines = []
+        current_non_ws_count = 0
+        
+        for line in lines:
+            line_non_ws = self._count_non_whitespace_chars(line)
+            
+            # 检查添加这一行是否会超过目标大小
+            if (current_non_ws_count + line_non_ws > self.chunk_size and 
+                current_chunk_lines and 
+                current_non_ws_count >= self.min_chunk_size):
+                
+                # 创建当前块
+                chunk_content = '\n'.join(current_chunk_lines)
+                chunk_doc = self._create_chunk_document(
+                    chunk_content, doc, len(chunks), file_path, language
+                )
+                chunks.append(chunk_doc)
+                
+                # 处理重叠
+                overlap_lines = self._get_overlap_lines(current_chunk_lines)
+                current_chunk_lines = overlap_lines + [line]
+                current_non_ws_count = self._count_non_whitespace_chars('\n'.join(current_chunk_lines))
+            else:
+                current_chunk_lines.append(line)
+                current_non_ws_count += line_non_ws
+        
+        # 处理最后一个块
+        if current_chunk_lines:
+            chunk_content = '\n'.join(current_chunk_lines)
+            chunk_doc = self._create_chunk_document(
+                chunk_content, doc, len(chunks), file_path, language
+            )
+            chunks.append(chunk_doc)
+        
+        logger.debug(f"📄 大文档分块: {doc.metadata.get('element_name', 'Unknown')} -> {len(chunks)} 个块")
+        return chunks
+
+    def _get_overlap_lines(self, lines: List[str]) -> List[str]:
+        """获取重叠的行"""
+        if not lines or self.chunk_overlap <= 0:
+            return []
+            
+        overlap_chars = 0
+        overlap_lines = []
+        
+        # 从末尾开始计算重叠
+        for line in reversed(lines):
+            line_non_ws = self._count_non_whitespace_chars(line)
+            if overlap_chars + line_non_ws <= self.chunk_overlap:
+                overlap_lines.insert(0, line)
+                overlap_chars += line_non_ws
+            else:
+                break
+                
+        return overlap_lines
+
+    def _create_chunk_document(self, content: str, original_doc: Document, 
+                             chunk_index: int, file_path: str, language: str) -> Document:
+        """创建分块文档"""
+        metadata = original_doc.metadata.copy()
+        metadata.update({
+            "is_chunk": True,
+            "chunk_index": chunk_index,
+            "original_element_name": metadata.get("element_name", "Unknown"),
+            "chunk_non_ws_chars": self._count_non_whitespace_chars(content)
+        })
+        
+        return Document(
+            page_content=content,
+            metadata=metadata
+        )
+
+    def _merge_small_documents(self, documents: List[Document], file_path: str, language: str) -> List[Document]:
+        """
+        合并小文档
+        
+        Args:
+            documents: 文档列表
+            file_path: 文件路径
+            language: 编程语言
+            
+        Returns:
+            List[Document]: 合并后的文档列表
+        """
+        if not documents:
+            return documents
+            
+        merged_docs = []
+        current_merge_group = []
+        current_merge_size = 0
+        
+        # 按元素类型分组，优先级：import < assignment < function < class
+        element_priority = {
+            "import": 1,
+            "assignment": 2, 
+            "function": 3,
+            "decorated_definition": 3,
+            "class": 4
+        }
+        
+        # 按优先级和位置排序
+        sorted_docs = sorted(documents, key=lambda doc: (
+            element_priority.get(doc.metadata.get("element_type", "unknown"), 5),
+            doc.metadata.get("start_line", 0)
+        ))
+        
+        for doc in sorted_docs:
+            non_ws_count = self._count_non_whitespace_chars(doc.page_content)
+            
+            # 如果文档已经足够大，直接添加
+            if non_ws_count >= self.min_chunk_size:
+                # 先处理当前合并组
+                if current_merge_group:
+                    merged_doc = self._create_merged_document(current_merge_group, file_path, language)
+                    merged_docs.append(merged_doc)
+                    current_merge_group = []
+                    current_merge_size = 0
+                
+                merged_docs.append(doc)
+                continue
+            
+            # 检查是否可以合并
+            can_merge = self._can_merge_documents(current_merge_group, doc)
+            
+            if (can_merge and 
+                current_merge_size + non_ws_count <= self.chunk_size):
+                # 加入当前合并组
+                current_merge_group.append(doc)
+                current_merge_size += non_ws_count
+            else:
+                # 结束当前合并组，开始新的
+                if current_merge_group:
+                    merged_doc = self._create_merged_document(current_merge_group, file_path, language)
+                    merged_docs.append(merged_doc)
+                
+                current_merge_group = [doc]
+                current_merge_size = non_ws_count
+        
+        # 处理最后一个合并组
+        if current_merge_group:
+            merged_doc = self._create_merged_document(current_merge_group, file_path, language)
+            merged_docs.append(merged_doc)
+        
+        logger.debug(f"🔗 文档合并: {len(documents)} -> {len(merged_docs)} 个文档")
+        return merged_docs
+
+    def _can_merge_documents(self, current_group: List[Document], new_doc: Document) -> bool:
+        """判断文档是否可以合并"""
+        if not current_group:
+            return True
+            
+        # 相同类型的元素可以合并
+        last_doc = current_group[-1]
+        last_type = last_doc.metadata.get("element_type", "")
+        new_type = new_doc.metadata.get("element_type", "")
+        
+        # 导入语句可以合并
+        if last_type == "import" and new_type == "import":
+            return True
+            
+        # 同类型的赋值可以合并
+        if last_type == "assignment" and new_type == "assignment":
+            return True
+            
+        # 小函数可以合并
+        if (last_type in ["function", "decorated_definition"] and 
+            new_type in ["function", "decorated_definition"]):
+            last_size = self._count_non_whitespace_chars(last_doc.page_content)
+            new_size = self._count_non_whitespace_chars(new_doc.page_content)
+            if last_size < self.min_chunk_size and new_size < self.min_chunk_size:
+                return True
+        
+        return False
+
+    def _create_merged_document(self, docs: List[Document], file_path: str, language: str) -> Document:
+        """创建合并文档"""
+        if len(docs) == 1:
+            return docs[0]
+            
+        # 合并内容
+        contents = [doc.page_content for doc in docs]
+        merged_content = '\n\n'.join(contents)
+        
+        # 合并元数据
+        element_types = [doc.metadata.get("element_type", "") for doc in docs]
+        element_names = [doc.metadata.get("element_name", "") for doc in docs]
+        
+        # 确定主要类型
+        type_counts = {}
+        for et in element_types:
+            type_counts[et] = type_counts.get(et, 0) + 1
+        main_type = max(type_counts, key=type_counts.get) if type_counts else "merged"
+        
+        # 创建合并的元数据
+        merged_metadata = {
+            "file_path": file_path,
+            "language": language,
+            "element_type": main_type,
+            "element_name": f"merged_{main_type}",
+            "is_merged": True,
+            "merged_count": len(docs),
+            "merged_elements": element_names,
+            "start_line": min(doc.metadata.get("start_line", 0) for doc in docs),
+            "end_line": max(doc.metadata.get("end_line", 0) for doc in docs),
+            "merged_non_ws_chars": self._count_non_whitespace_chars(merged_content)
+        }
+        
+        return Document(
+            page_content=merged_content,
+            metadata=merged_metadata
+        )
 
     def _determine_language(self, file_path: str, language: str) -> Optional[str]:
         """确定要使用的编程语言"""
