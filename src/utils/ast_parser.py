@@ -6,9 +6,16 @@ AST解析器
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Set, Callable
+import json
+from typing import Any, Dict, List, Optional, Set, Callable, NamedTuple
 from langchain_core.documents import Document
 from tree_sitter import Language, Parser, Node
+
+# 简单的伪节点类，用于大类分解
+class MockNode(NamedTuple):
+    start_byte: int
+    end_byte: int
+    type: str
 
 # 动态导入语言解析器
 AVAILABLE_PARSERS = {}
@@ -93,7 +100,8 @@ class AstParser:
                  chunk_size: int = 1000,
                  chunk_overlap: int = 200,
                  min_chunk_size: int = 100,
-                 max_chunk_size: int = 2000):
+                 max_chunk_size: int = 2000,
+                 class_decompose_threshold: float = 2.5):
         """初始化AST解析器
         
         Args:
@@ -101,6 +109,7 @@ class AstParser:
             chunk_overlap: 块重叠大小
             min_chunk_size: 最小块大小
             max_chunk_size: 最大块大小
+            class_decompose_threshold: 大类分解阈值倍数（相对于chunk_size）
         """
         self.parsers: Dict[str, Parser] = {}
         self._extension_to_language = {}
@@ -111,6 +120,7 @@ class AstParser:
         self.chunk_overlap = chunk_overlap
         self.min_chunk_size = min_chunk_size
         self.max_chunk_size = max_chunk_size
+        self.class_decompose_threshold = class_decompose_threshold
         
         self._init_languages()
 
@@ -263,7 +273,7 @@ class AstParser:
 
     def _chunk_large_document(self, doc: Document, file_path: str, language: str) -> List[Document]:
         """
-        分块大文档
+        分块大文档（语法感知优先，长度兜底）
         
         Args:
             doc: 要分块的文档
@@ -272,29 +282,143 @@ class AstParser:
             
         Returns:
             List[Document]: 分块后的文档列表
+        思路：
+        1) 先用对应语言的 parser 解析 doc.page_content。
+        2) 尽量在语法节点边界（语句、类成员、函数体语句等）进行切分并按 chunk_size 聚合。
+        3) 如果语法不可用或失败，退化为原来的按行切分逻辑。
+        4) 保持 chunk_overlap（按非空白字符数）作为上下文重叠。
         """
         content = doc.page_content
+        chunks: List[Document] = []
+
+        # 优先语法感知切分
+        try:
+            if language not in self.parsers:
+                raise RuntimeError("parser_not_available")
+
+            parser = self.parsers[language]
+            source_bytes = content.encode("utf8")
+            tree = parser.parse(source_bytes)
+            root = tree.root_node
+
+            # 获取候选语法单元（尽量是语句或成员），失败则抛出异常走兜底
+            units = self._get_syntax_units_for_chunking(root, source_bytes, language)
+            if not units:
+                raise RuntimeError("no_syntax_units")
+
+            # 基于语法单元聚合形成块
+            current_parts: List[str] = []
+            current_non_ws = 0
+            chunk_idx = 0
+
+            def flush_chunk():
+                nonlocal current_parts, current_non_ws, chunk_idx
+                if not current_parts:
+                    return
+                # 用换行符连接语法单元，保持代码结构
+                chunk_text = "\n".join(current_parts)
+                chunk_doc = self._create_chunk_document(
+                    chunk_text, doc, chunk_idx, file_path, language
+                )
+                chunks.append(chunk_doc)
+                chunk_idx += 1
+                
+                # 重叠策略：保留最后几个较小的语法单元作为下一块的开头
+                overlap_parts = []
+                overlap_non_ws = 0
+                
+                # 从后往前添加单元，直到接近重叠大小
+                for part in reversed(current_parts):
+                    part_non_ws = self._count_non_whitespace_chars(part)
+                    if overlap_non_ws + part_non_ws <= self.chunk_overlap:
+                        overlap_parts.insert(0, part)
+                        overlap_non_ws += part_non_ws
+                    else:
+                        break
+                
+                current_parts = overlap_parts
+                current_non_ws = overlap_non_ws
+
+            for u_start, u_end in units:
+                part = source_bytes[u_start:u_end].decode("utf8").strip()
+                if not part:  # 跳过空内容
+                    continue
+                    
+                part_len = self._count_non_whitespace_chars(part)
+
+                # 处理超大单个语法单元：如果单个单元超过max_chunk_size，尝试进一步分解
+                if part_len > self.max_chunk_size:
+                    logger.debug(f"发现超大语法单元({part_len}字符)，尝试进一步分解")
+                    # 先保存当前块
+                    if current_parts:
+                        flush_chunk()
+                    
+                    # 尝试分解超大单元
+                    large_unit_chunks = self._decompose_large_unit(part, doc, len(chunks), file_path, language)
+                    chunks.extend(large_unit_chunks)
+                    continue
+
+                # 改进的分块逻辑：
+                # 1. 如果当前块已经足够大，且添加新单元会超过chunk_size，则分块
+                # 2. 智能分块：考虑语法单元的重要性
+                should_chunk = False
+                
+                if current_parts:  # 已有内容
+                    if current_non_ws + part_len > self.chunk_size and current_non_ws >= self.min_chunk_size:
+                        should_chunk = True
+                    # 如果当前块已达到目标大小的80%，且新单元会使其明显超过，也分块
+                    elif (current_non_ws >= self.chunk_size * 0.8 and 
+                          current_non_ws + part_len > self.chunk_size * 1.2):
+                        should_chunk = True
+                    # 智能边界：如果是类或函数定义，倾向于在此分界
+                    elif (current_non_ws >= self.chunk_size * 0.6 and 
+                          self._is_major_boundary(part) and
+                          current_non_ws + part_len > self.chunk_size * 1.5):
+                        should_chunk = True
+                
+                if should_chunk:
+                    flush_chunk()
+
+                current_parts.append(part)
+                current_non_ws += part_len
+
+            # 最后一个块
+            if current_parts:
+                chunk_text = "\n".join(current_parts)
+                chunk_doc = self._create_chunk_document(
+                    chunk_text, doc, len(chunks), file_path, language
+                )
+                chunks.append(chunk_doc)
+
+            logger.debug(
+                f"📄 大文档分块(语法): {doc.metadata.get('element_name', 'Unknown')} -> {len(chunks)} 个块")
+            if chunks:
+                return chunks
+
+        except Exception as e:
+            # 改进的错误处理：记录具体错误但继续处理
+            logger.debug(f"语法分块失败，回退到行分块: {str(e)}")
+            pass
+
+        # 兜底：按行切分（原逻辑）
         lines = content.split('\n')
-        chunks = []
-        
-        current_chunk_lines = []
+        current_chunk_lines: List[str] = []
         current_non_ws_count = 0
-        
+
         for line in lines:
             line_non_ws = self._count_non_whitespace_chars(line)
-            
-            # 检查添加这一行是否会超过目标大小
-            if (current_non_ws_count + line_non_ws > self.chunk_size and 
-                current_chunk_lines and 
-                current_non_ws_count >= self.min_chunk_size):
-                
-                # 创建当前块
+
+            if (current_non_ws_count + line_non_ws > self.chunk_size and
+                    current_chunk_lines and
+                    current_non_ws_count >= self.min_chunk_size):
+
+                #创建当前块
                 chunk_content = '\n'.join(current_chunk_lines)
                 chunk_doc = self._create_chunk_document(
                     chunk_content, doc, len(chunks), file_path, language
                 )
                 chunks.append(chunk_doc)
-                
+
                 # 处理重叠
                 overlap_lines = self._get_overlap_lines(current_chunk_lines)
                 current_chunk_lines = overlap_lines + [line]
@@ -302,17 +426,478 @@ class AstParser:
             else:
                 current_chunk_lines.append(line)
                 current_non_ws_count += line_non_ws
-        
-        # 处理最后一个块
+                
+        #处理最后一个块
         if current_chunk_lines:
             chunk_content = '\n'.join(current_chunk_lines)
             chunk_doc = self._create_chunk_document(
                 chunk_content, doc, len(chunks), file_path, language
             )
             chunks.append(chunk_doc)
-        
-        logger.debug(f"📄 大文档分块: {doc.metadata.get('element_name', 'Unknown')} -> {len(chunks)} 个块")
+
+        logger.debug(
+            f"📄 大文档分块(行): {doc.metadata.get('element_name', 'Unknown')} -> {len(chunks)} 个块")
         return chunks
+
+    def _get_text_overlap(self, text: str) -> str:
+        """根据 chunk_overlap 从结尾回溯构造重叠文本（按非空白字符数，尽量在行边界）。"""
+        if self.chunk_overlap <= 0 or not text:
+            return ""
+        
+        lines = text.split('\n')
+        overlap_lines = []
+        total_non_ws = 0
+        
+        # 从末尾开始添加完整的行，直到接近重叠大小
+        for line in reversed(lines):
+            line_non_ws = self._count_non_whitespace_chars(line)
+            if total_non_ws + line_non_ws <= self.chunk_overlap:
+                overlap_lines.insert(0, line)
+                total_non_ws += line_non_ws
+            else:
+                break
+        
+        return '\n'.join(overlap_lines) if overlap_lines else ""
+
+    def _is_major_boundary(self, content: str) -> bool:
+        """判断是否为主要语法边界（类、函数定义等）"""
+        content_strip = content.strip()
+        # Python
+        if (content_strip.startswith('class ') or 
+            content_strip.startswith('def ') or 
+            content_strip.startswith('async def ') or
+            content_strip.startswith('@')):
+            return True
+        # JavaScript/TypeScript
+        if (content_strip.startswith('class ') or 
+            content_strip.startswith('function ') or 
+            content_strip.startswith('export ') or
+            content_strip.startswith('import ') or
+            content_strip.startswith('const ') or
+            content_strip.startswith('let ') or
+            content_strip.startswith('var ')):
+            return True
+        # Java/C#
+        if (content_strip.startswith('public class ') or 
+            content_strip.startswith('private class ') or 
+            content_strip.startswith('protected class ') or
+            content_strip.startswith('internal class ') or
+            content_strip.startswith('public interface ') or
+            content_strip.startswith('public struct ') or
+            content_strip.startswith('public enum ') or
+            content_strip.startswith('public ') or
+            content_strip.startswith('private ') or
+            content_strip.startswith('protected ') or
+            content_strip.startswith('namespace ') or
+            content_strip.startswith('using ')):
+            return True
+        # Go
+        if (content_strip.startswith('func ') or 
+            content_strip.startswith('type ') or 
+            content_strip.startswith('var ') or
+            content_strip.startswith('const ') or
+            content_strip.startswith('package ') or
+            content_strip.startswith('import ')):
+            return True
+        # Rust
+        if (content_strip.startswith('fn ') or 
+            content_strip.startswith('struct ') or 
+            content_strip.startswith('enum ') or
+            content_strip.startswith('impl ') or
+            content_strip.startswith('trait ') or
+            content_strip.startswith('mod ') or
+            content_strip.startswith('use ') or
+            content_strip.startswith('pub fn ') or
+            content_strip.startswith('pub struct ') or
+            content_strip.startswith('pub enum ') or
+            content_strip.startswith('pub trait ') or
+            content_strip.startswith('pub mod ')):
+            return True
+        # C/C++
+        if (content_strip.startswith('class ') or 
+            content_strip.startswith('struct ') or 
+            content_strip.startswith('namespace ') or
+            content_strip.startswith('template ') or
+            content_strip.startswith('template<') or
+            content_strip.startswith('#include ') or
+            content_strip.startswith('#define ') or
+            content_strip.startswith('extern ') or
+            content_strip.startswith('static ') or
+            content_strip.startswith('inline ') or
+            content_strip.startswith('virtual ') or
+            content_strip.startswith('public:') or
+            content_strip.startswith('private:') or
+            content_strip.startswith('protected:')):
+            return True
+        return False
+
+    def _decompose_large_unit(self, content: str, original_doc: Document, 
+                             start_chunk_idx: int, file_path: str, language: str) -> List[Document]:
+        """分解超大的语法单元（如非常长的方法）"""
+        # 对于超大单元，回退到行级分块
+        lines = content.split('\n')
+        sub_chunks = []
+        current_lines = []
+        current_non_ws = 0
+        
+        for line in lines:
+            line_non_ws = self._count_non_whitespace_chars(line)
+            
+            if (current_non_ws + line_non_ws > self.chunk_size and 
+                current_lines and 
+                current_non_ws >= self.min_chunk_size):
+                
+                # 创建子块
+                sub_content = '\n'.join(current_lines)
+                sub_chunk = self._create_chunk_document(
+                    sub_content, original_doc, start_chunk_idx + len(sub_chunks), file_path, language
+                )
+                sub_chunk.metadata['is_decomposed_unit'] = True
+                sub_chunks.append(sub_chunk)
+                
+                # 处理重叠
+                overlap_lines = self._get_overlap_lines(current_lines)
+                current_lines = overlap_lines + [line]
+                current_non_ws = self._count_non_whitespace_chars('\n'.join(current_lines))
+            else:
+                current_lines.append(line)
+                current_non_ws += line_non_ws
+        
+        # 处理最后的子块
+        if current_lines:
+            sub_content = '\n'.join(current_lines)
+            sub_chunk = self._create_chunk_document(
+                sub_content, original_doc, start_chunk_idx + len(sub_chunks), file_path, language
+            )
+            sub_chunk.metadata['is_decomposed_unit'] = True
+            sub_chunks.append(sub_chunk)
+        
+        logger.debug(f"超大单元分解: {len(content)} 字符 -> {len(sub_chunks)} 个子块")
+        return sub_chunks
+
+    def _get_syntax_units_for_chunking(self, root: Node, source_bytes: bytes, language: str) -> List[tuple]:
+        """
+        获取用于分块的语法单元区间列表（start_byte, end_byte）。
+        会尽量定位到“语句列表/成员列表”，否则退化为 root 的命名子节点。
+        """
+        def node_spans_all(n: Node) -> bool:
+            # 判断 n 是否几乎覆盖整个 root（避免选错容器）
+            total = root.end_byte - root.start_byte
+            span = n.end_byte - n.start_byte
+            return span >= max(0, total - 1)  # 容忍 1 字节误差
+
+        lang = language.lower()
+        container = root
+
+        # 尝试找到更合适的容器（函数/类整个作为内容时）
+        if len(root.children) == 1 and root.children[0].is_named and node_spans_all(root.children[0]):
+            container = root.children[0]
+
+        def named_children(n: Node) -> List[Node]:
+            return [c for c in n.children if c.is_named]
+
+        # 语言特定：寻找语句/成员列表
+        units_nodes: List[Node] = []
+
+        try:
+            if lang == 'python':
+                # 如果容器是类定义，优先提取类内的方法和属性
+                if container.type == 'class_definition':
+                    # 找到类体 (block/suite)
+                    class_body = None
+                    for c in container.children:
+                        if c.type in ('block', 'suite'):
+                            class_body = c
+                            break
+                    if class_body:
+                        units_nodes = [n for n in named_children(class_body)]
+                    else:
+                        units_nodes = [container]  # 回退到整个类
+                else:
+                    # 模块级别或其他容器
+                    # function/class/decorated 的 block 里是语句列表
+                    block = None
+                    for c in container.children:
+                        if c.type in ('block', 'suite'):
+                            block = c
+                            break
+                    if block:
+                        units_nodes = [n for n in named_children(block)]
+                    else:
+                        # 模块级别：直接取命名子节点，但如果有大的类定义，需要进一步分解
+                        initial_units = [n for n in named_children(container)]
+                        units_nodes = []
+                        for unit in initial_units:
+                            if unit.type == 'class_definition':
+                                # 如果类很大，分解为类声明+方法
+                                class_size = unit.end_byte - unit.start_byte
+                                if class_size > self.chunk_size * self.class_decompose_threshold:
+                                    # 添加类声明行
+                                    class_header = None
+                                    class_body = None
+                                    for c in unit.children:
+                                        if c.type == 'identifier' or c.type == ':':
+                                            continue
+                                        elif c.type in ('block', 'suite'):
+                                            class_body = c
+                                            break
+                                    
+                                    # 添加类头部（到冒号）
+                                    if class_body:
+                                        header_end = class_body.start_byte
+                                        units_nodes.append(MockNode(
+                                            start_byte=unit.start_byte,
+                                            end_byte=header_end,
+                                            type='class_header'
+                                        ))
+                                        # 添加类体内的各个方法
+                                        for method in named_children(class_body):
+                                            units_nodes.append(method)
+                                    else:
+                                        units_nodes.append(unit)
+                                else:
+                                    units_nodes.append(unit)
+                            else:
+                                units_nodes.append(unit)
+
+            elif lang in ('javascript', 'typescript'):
+                # 如果容器是类声明，优先提取类内的方法和属性
+                if container.type in ('class_declaration', 'class'):
+                    # 找到类体
+                    class_body = None
+                    for c in container.children:
+                        if c.type in ('class_body', 'object_type'):
+                            class_body = c
+                            break
+                    if class_body:
+                        units_nodes = [n for n in named_children(class_body)]
+                    else:
+                        units_nodes = [container]  # 回退到整个类
+                else:
+                    # 模块级别：直接取命名子节点，但如果有大的类定义，需要进一步分解
+                    initial_units = [n for n in named_children(container)]
+                    units_nodes = []
+                    for unit in initial_units:
+                        if unit.type in ('class_declaration', 'class'):
+                            # 如果类很大，分解为类声明+方法
+                            class_size = unit.end_byte - unit.start_byte
+                            if class_size > self.chunk_size * self.class_decompose_threshold:
+                                # 找到类体
+                                class_body = None
+                                for c in unit.children:
+                                    if c.type in ('class_body', 'object_type'):
+                                        class_body = c
+                                        break
+                                
+                                # 添加类头部（到大括号）
+                                if class_body:
+                                    header_end = class_body.start_byte
+                                    units_nodes.append(MockNode(
+                                        start_byte=unit.start_byte,
+                                        end_byte=header_end,
+                                        type='class_header'
+                                    ))
+                                    # 添加类体内的各个方法
+                                    for method in named_children(class_body):
+                                        units_nodes.append(method)
+                                else:
+                                    units_nodes.append(unit)
+                            else:
+                                units_nodes.append(unit)
+                        else:
+                            units_nodes.append(unit)
+
+            elif lang in ('java', 'csharp'):
+                # 如果容器是类/接口/结构体声明，优先提取内部成员
+                if container.type in ('class_declaration', 'interface_declaration', 'struct_declaration'):
+                    # 找到类体
+                    body = None
+                    for c in container.children:
+                        if c.type in ('class_body', 'interface_body', 'struct_body'):
+                            body = c
+                            break
+                    if body:
+                        units_nodes = [n for n in named_children(body)]
+                    else:
+                        units_nodes = [container]  # 回退到整个类
+                else:
+                    # 模块级别：直接取命名子节点，但如果有大的类定义，需要进一步分解
+                    initial_units = [n for n in named_children(container)]
+                    units_nodes = []
+                    for unit in initial_units:
+                        if unit.type in ('class_declaration', 'interface_declaration', 'struct_declaration'):
+                            # 如果类很大，分解为类声明+方法
+                            class_size = unit.end_byte - unit.start_byte
+                            if class_size > self.chunk_size * self.class_decompose_threshold:
+                                # 找到类体
+                                body = None
+                                for c in unit.children:
+                                    if c.type in ('class_body', 'interface_body', 'struct_body'):
+                                        body = c
+                                        break
+                                
+                                # 添加类头部（到大括号）
+                                if body:
+                                    header_end = body.start_byte
+                                    units_nodes.append(MockNode(
+                                        start_byte=unit.start_byte,
+                                        end_byte=header_end,
+                                        type='class_header'
+                                    ))
+                                    # 添加类体内的各个成员
+                                    for member in named_children(body):
+                                        units_nodes.append(member)
+                                else:
+                                    units_nodes.append(unit)
+                            else:
+                                units_nodes.append(unit)
+                        else:
+                            units_nodes.append(unit)
+
+            elif lang == 'go':
+                # Go语言的结构体和接口处理
+                if container.type in ('type_declaration', 'source_file'):
+                    initial_units = [n for n in named_children(container)]
+                    units_nodes = []
+                    for unit in initial_units:
+                        if unit.type == 'type_declaration':
+                            # 检查是否是大的结构体或接口
+                            type_size = unit.end_byte - unit.start_byte
+                            if type_size > self.chunk_size * self.class_decompose_threshold:
+                                # 分解为类型声明+方法
+                                units_nodes.append(unit)  # Go的类型声明相对简单，暂时不分解
+                            else:
+                                units_nodes.append(unit)
+                        else:
+                            units_nodes.append(unit)
+                else:
+                    units_nodes = [n for n in named_children(container)]
+                    
+            elif lang == 'rust':
+                # Rust的结构体、枚举、impl块处理
+                if container.type in ('source_file', 'mod_item'):
+                    initial_units = [n for n in named_children(container)]
+                    units_nodes = []
+                    for unit in initial_units:
+                        if unit.type in ('struct_item', 'enum_item', 'impl_item'):
+                            # 如果结构体/枚举/impl很大，分解它
+                            item_size = unit.end_byte - unit.start_byte
+                            if item_size > self.chunk_size * self.class_decompose_threshold:
+                                if unit.type == 'impl_item':
+                                    # impl块可以分解为impl声明+各个方法
+                                    impl_body = None
+                                    for c in unit.children:
+                                        if c.type == 'declaration_list':
+                                            impl_body = c
+                                            break
+                                    
+                                    if impl_body:
+                                        header_end = impl_body.start_byte
+                                        units_nodes.append(MockNode(
+                                            start_byte=unit.start_byte,
+                                            end_byte=header_end,
+                                            type='impl_header'
+                                        ))
+                                        # 添加impl体内的各个方法
+                                        for method in named_children(impl_body):
+                                            units_nodes.append(method)
+                                    else:
+                                        units_nodes.append(unit)
+                                else:
+                                    units_nodes.append(unit)  # 结构体和枚举暂时不分解
+                            else:
+                                units_nodes.append(unit)
+                        else:
+                            units_nodes.append(unit)
+                else:
+                    units_nodes = [n for n in named_children(container)]
+                    
+            elif lang in ('cpp', 'c'):
+                # C++的类和结构体处理
+                if container.type in ('translation_unit',):
+                    initial_units = [n for n in named_children(container)]
+                    units_nodes = []
+                    for unit in initial_units:
+                        if unit.type in ('class_specifier', 'struct_specifier'):
+                            # 如果类很大，分解为类声明+方法
+                            class_size = unit.end_byte - unit.start_byte
+                            if class_size > self.chunk_size * self.class_decompose_threshold:
+                                # C++类体通常在field_declaration_list中
+                                class_body = None
+                                for c in unit.children:
+                                    if c.type == 'field_declaration_list':
+                                        class_body = c
+                                        break
+                                
+                                if class_body:
+                                    header_end = class_body.start_byte
+                                    units_nodes.append(MockNode(
+                                        start_byte=unit.start_byte,
+                                        end_byte=header_end,
+                                        type='class_header'
+                                    ))
+                                    # 添加类体内的各个成员
+                                    for member in named_children(class_body):
+                                        units_nodes.append(member)
+                                else:
+                                    units_nodes.append(unit)
+                            else:
+                                units_nodes.append(unit)
+                        else:
+                            units_nodes.append(unit)
+                else:
+                    units_nodes = [n for n in named_children(container)]
+
+            else:
+                # 通用处理：对于未知语言，尝试基本的大节点分解
+                initial_units = [n for n in named_children(container)]
+                units_nodes = []
+                for unit in initial_units:
+                    # 如果单个节点很大，尝试分解其子节点
+                    unit_size = unit.end_byte - unit.start_byte
+                    if unit_size > self.chunk_size * self.class_decompose_threshold:
+                        children = named_children(unit)
+                        if len(children) > 1:  # 有多个子节点可以分解
+                            units_nodes.extend(children)
+                        else:
+                            units_nodes.append(unit)
+                    else:
+                        units_nodes.append(unit)
+
+        except Exception:
+            units_nodes = []
+
+        # 过滤掉非常小或无意义的节点（如注释/空标记），确保序
+        units_nodes = [n for n in units_nodes if n.end_byte > n.start_byte]
+        units_nodes.sort(key=lambda n: n.start_byte)
+
+        # 合并相邻被语法漏掉的空洞：用 root 的范围兜底
+        if not units_nodes:
+            return [(root.start_byte, root.end_byte)]
+
+        ranges: List[tuple] = []
+        prev_end = units_nodes[0].start_byte
+        # 如果开头有空洞，填上
+        if prev_end > root.start_byte:
+            ranges.append((root.start_byte, prev_end))
+
+        # 单元本身
+        for n in units_nodes:
+            ranges.append((n.start_byte, n.end_byte))
+            prev_end = n.end_byte
+
+        # 尾部空洞
+        if prev_end < root.end_byte:
+            ranges.append((prev_end, root.end_byte))
+
+        # 去掉全是空白的段
+        cleaned: List[tuple] = []
+        for s, e in ranges:
+            seg = source_bytes[s:e].decode('utf8')
+            if self._count_non_whitespace_chars(seg) > 0:
+                cleaned.append((s, e))
+
+        return cleaned
 
     def _get_overlap_lines(self, lines: List[str]) -> List[str]:
         """获取重叠的行"""
@@ -478,7 +1063,7 @@ class AstParser:
             "element_name": f"merged_{main_type}",
             "is_merged": True,
             "merged_count": len(docs),
-            "merged_elements": element_names,
+            "merged_elements": json.dumps(element_names),
             "start_line": min(doc.metadata.get("start_line", 0) for doc in docs),
             "end_line": max(doc.metadata.get("end_line", 0) for doc in docs),
             "merged_non_ws_chars": self._count_non_whitespace_chars(merged_content)
