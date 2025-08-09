@@ -188,6 +188,9 @@ docker compose ps
 - **Flower (任务监控)**: http://localhost:5555
 - **健康检查**: http://localhost:8000/health
 
+## 项目状态
+![Alt](https://repobeats.axiom.co/api/embed/d8aa7372b9025fa79f7b6ac8bc404621984fc947.svg "Repobeats analytics image")
+
 ## 📊 服务监控
 
 | 服务 | 端口 | 监控 URL | 说明 |
